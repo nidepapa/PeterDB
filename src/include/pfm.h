@@ -4,11 +4,26 @@
 #define PAGE_SIZE 4096
 
 #include <string>
+#include <vector>
 
 namespace PeterDB {
 
     typedef unsigned PageNum;
     typedef int RC;
+    // metadata of one file
+    struct FileHeader{
+        short pageNum;
+        unsigned readPageCounter;
+        unsigned writePageCounter;
+        unsigned appendPageCounter;
+    };
+    // metadata of one page
+    struct PageHeader{
+        short recordNum;
+        short freeSpace;
+        short freeOffset;
+        std::vector<short> slotTable;
+    };
 
     class FileHandle;
 
@@ -30,6 +45,7 @@ namespace PeterDB {
     };
 
     class FileHandle {
+        friend class PagedFileManager;
     public:
         // variables to keep the counter for each operation
         unsigned readPageCounter;
@@ -45,8 +61,15 @@ namespace PeterDB {
         unsigned getNumberOfPages();                                        // Get the number of pages in the file
         RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount,
                                 unsigned &appendPageCount);                 // Put current counter values into variables
+    private:
+        FileHeader hdr;                                                     // file header
+        FILE *fileInMemory;                                                 // in memory file
+        bool fileIsOpen;
+
+
     };
 
+    const int File_Header_Page_Size = PAGE_SIZE;
 } // namespace PeterDB
 
 #endif // _pfm_h_

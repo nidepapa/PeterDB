@@ -12,7 +12,7 @@ namespace PeterDB {
     typedef int RC;
     // metadata of one file
     struct FileHeader{
-        short pageNum;
+        unsigned pageCounter;
         unsigned readPageCounter;
         unsigned writePageCounter;
         unsigned appendPageCounter;
@@ -48,12 +48,13 @@ namespace PeterDB {
         friend class PagedFileManager;
     public:
         // variables to keep the counter for each operation
-        unsigned readPageCounter;
-        unsigned writePageCounter;
-        unsigned appendPageCounter;
+        FileHeader hdr;                                                     // file header
 
         FileHandle();                                                       // Default constructor
         ~FileHandle();                                                      // Destructor
+
+        RC openFile(const std::string& fileName);                        // open a file
+        RC closeFile();                                                     // close a file
 
         RC readPage(PageNum pageNum, void *data);                           // Get a specific page
         RC writePage(PageNum pageNum, const void *data);                    // Write a specific page
@@ -62,11 +63,12 @@ namespace PeterDB {
         RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount,
                                 unsigned &appendPageCount);                 // Put current counter values into variables
     private:
-        FileHeader hdr;                                                     // file header
         FILE *fileInMemory;                                                 // in memory file
+        std::string fileName;
         bool fileIsOpen;
 
-
+        RC flushMetadata();
+        RC readMetadata();
     };
 
     const int File_Header_Page_Size = PAGE_SIZE;

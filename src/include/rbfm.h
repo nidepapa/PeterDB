@@ -171,7 +171,7 @@ namespace PeterDB {
         short getSlotOffset(short slotNum);
     };
 
-    class RecordHelper {
+    class RecordHandle {
     public:
         static RC rawDataToRecordByte(char* rawData, const std::vector<Attribute> &attrs, char* byteSeq, RecLength & recordLen);
         static RC recordByteToRawData(char record[], const short recordLen, const std::vector<Attribute> &recordDescriptor, char* data);

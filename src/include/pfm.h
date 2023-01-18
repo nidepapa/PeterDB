@@ -35,7 +35,7 @@ namespace PeterDB {
         RC destroyFile(const std::string &fileName);                        // Destroy a file
         RC openFile(const std::string &fileName, FileHandle &fileHandle);   // Open a file
         RC closeFile(FileHandle &fileHandle);                               // Close a file
-
+        bool isFileExists(const std::string fileName);
     protected:
         PagedFileManager();                                                 // Prevent construction
         ~PagedFileManager();                                                // Prevent unwanted destruction

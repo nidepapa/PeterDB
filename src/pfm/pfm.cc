@@ -5,9 +5,6 @@ using namespace std;
 
 namespace PeterDB {
 
-    FILE *fileInMemory = NULL;
-
-
     PagedFileManager &PagedFileManager::instance() {
         static PagedFileManager _pf_manager = PagedFileManager();
         return _pf_manager;
@@ -22,24 +19,20 @@ namespace PeterDB {
     PagedFileManager &PagedFileManager::operator=(const PagedFileManager &) = default;
 
     RC PagedFileManager::createFile(const string &fileName) {
-        FILE *fp;
-        size_t result;
-        fp = fopen(fileName.c_str(), "w+b");
-        if (fp == NULL) return -1;
+        if (isFileExists(fileName)) return -1;
+
+        FILE* fp = fopen(fileName.c_str(), "w+b");
 
         // init metadata of file
         FileHeader header = {0, 0, 0, 0};
-        result = fwrite(&header, sizeof(FileHeader), 1, fp);
-        if (result < 1) {
-            fclose(fp);
-            return -1;
-        }
-
+        fwrite(&header, File_Header_Page_Size, 1, fp);
+        fflush(fp);
         fclose(fp);
         return 0;
     }
 
     RC PagedFileManager::destroyFile(const string &fileName) {
+        if (!isFileExists(fileName)) return -1;
         // remove file
         if (remove(fileName.c_str()) != 0) return -1;
         return 0;
@@ -51,6 +44,13 @@ namespace PeterDB {
 
     RC PagedFileManager::closeFile(FileHandle &fileHandle) {
         return fileHandle.closeFile();
+    }
+
+    bool PagedFileManager::isFileExists(const std::string fileName){
+        FILE* fp = fopen(fileName.c_str(), "r");
+        if (!fp) return false;
+        fclose(fp);
+        return true;
     }
 
     FileHandle::FileHandle() {

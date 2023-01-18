@@ -18,6 +18,7 @@ namespace PeterDB {
     } AttrType;
 
     typedef unsigned AttrLength;
+    typedef unsigned RecLength;
 
     typedef struct Attribute {
         std::string name;  // attribute name
@@ -141,6 +142,44 @@ namespace PeterDB {
 
     };
 
+    class PageHandle {
+    public:
+        FileHandle& fh;
+        PageNum pageNum;
+
+        short freeBytePointer;
+        short slotCounter;
+        char data[PAGE_SIZE] = {};
+
+        short getFreeSpace();
+        bool IsFreeSpaceEnough(int recLength);
+
+        RC insertRecordInByte(char byteSeq[], RecLength recLength, RID& rid);
+        RC getRecordInByte(short slotNum, char recordByteSeq[], short& recLength);
+
+    protected:
+        PageHandle(FileHandle& fileHandle, PageNum pageNum);
+        ~PageHandle();
+
+    private:
+        short getHeaderLength();
+        short getSlotListLength();
+
+        short getSlotCounterOffset();
+        short getFreeBytePointerOffset();
+        // Slot Num start from 1 !!!
+        short getSlotOffset(short slotNum);
+    };
+
+    class RecordHelper {
+    public:
+        static RC rawDataToRecordByte(char* rawData, const std::vector<Attribute> &attrs, char* byteSeq, RecLength & recordLen);
+        static RC recordByteToRawData(char record[], const short recordLen, const std::vector<Attribute> &recordDescriptor, char* data);
+
+        //static bool isAttrNull(char* data, unsigned index);
+        //static void setAttrNull(char* data, unsigned index);
+
+    };
 } // namespace PeterDB
 
 #endif // _rbfm_h_

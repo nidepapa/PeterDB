@@ -17,13 +17,6 @@ namespace PeterDB {
         unsigned writePageCounter;
         unsigned appendPageCounter;
     };
-    // metadata of one page
-    struct PageHeader{
-        short recordNum;
-        short freeSpace;
-        short freeOffset;
-        std::vector<short> slotTable;
-    };
 
     class FileHandle;
 
@@ -47,8 +40,6 @@ namespace PeterDB {
     class FileHandle {
         friend class PagedFileManager;
     public:
-        // variables to keep the counter for each operation
-        FileHeader hdr;                                                     // file header
 
         FileHandle();                                                       // Default constructor
         ~FileHandle();                                                      // Destructor
@@ -62,7 +53,9 @@ namespace PeterDB {
         unsigned getNumberOfPages();                                        // Get the number of pages in the file
         RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount,
                                 unsigned &appendPageCount);                 // Put current counter values into variables
+        bool isFileOpen();
     private:
+        FileHeader hdr;                                                     // file header
         FILE *fileInMemory;                                                 // in memory file
         std::string fileName;
         bool fileIsOpen;

@@ -85,6 +85,7 @@ namespace PeterDB {
         fileIsOpen = false;
         flushMetadata();
         fclose(fileInMemory);
+        return 0;
     }
 
     RC FileHandle::readPage(PageNum pageNum, void *data) {
@@ -165,6 +166,10 @@ namespace PeterDB {
 
         if (result != sizeof(FileHeader)) return -1;
         return 0;
+    }
+
+    bool FileHandle::isFileOpen(){
+        return this->fileIsOpen;
     }
 
 

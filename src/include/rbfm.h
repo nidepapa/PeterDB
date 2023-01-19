@@ -18,7 +18,6 @@ namespace PeterDB {
     } AttrType;
 
     typedef unsigned AttrLength;
-    typedef unsigned RecLength;
 
     typedef struct Attribute {
         std::string name;  // attribute name
@@ -99,8 +98,7 @@ namespace PeterDB {
                         RID &rid);
 
         // Read a record identified by the given rid.
-        RC
-        readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data);
+        RC readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data);
 
         // Print the record that is passed to this utility method.
         // This method will be mainly used for debugging/testing.
@@ -110,10 +108,12 @@ namespace PeterDB {
         //        age: NULL  height: 7.5  salary: 7500)
         RC printRecord(const std::vector<Attribute> &recordDescriptor, const void *data, std::ostream &out);
 
-        /*****************************************************************************************************
-        * IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) *
-        * are NOT required to be implemented for Project 1                                                   *
-        *****************************************************************************************************/
+        RC getAvailablePage(FileHandle& fileHandle, short recLength, PageNum& availablePageNum);
+
+            /*****************************************************************************************************
+            * IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) *
+            * are NOT required to be implemented for Project 1                                                   *
+            *****************************************************************************************************/
         // Delete a record identified by the given rid.
         RC deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid);
 
@@ -141,43 +141,47 @@ namespace PeterDB {
         RecordBasedFileManager &operator=(const RecordBasedFileManager &);          // Prevent assignment
 
     };
-
+    //slot n|...|slot 1|N|F
     class PageHandle {
     public:
         FileHandle& fh;
         PageNum pageNum;
-
+        //flags
         short freeBytePointer;
         short slotCounter;
-        char data[PAGE_SIZE] = {};
+        //page data
+        char dataSeq[PAGE_SIZE] = {};
 
-        short getFreeSpace();
         bool IsFreeSpaceEnough(int recLength);
 
-        RC insertRecordInByte(char byteSeq[], RecLength recLength, RID& rid);
+        RC insertRecordInByte(char byteSeq[], short recLength, RID& rid);
         RC getRecordInByte(short slotNum, char recordByteSeq[], short& recLength);
 
-    protected:
         PageHandle(FileHandle& fileHandle, PageNum pageNum);
         ~PageHandle();
 
     private:
+        short getFlagsLength();
+        short getSlotSize();
+        // N|F
         short getHeaderLength();
         short getSlotListLength();
 
         short getSlotCounterOffset();
         short getFreeBytePointerOffset();
-        // Slot Num start from 1 !!!
+        // Slot Num start from 1
         short getSlotOffset(short slotNum);
     };
 
     class RecordHandle {
     public:
-        static RC rawDataToRecordByte(char* rawData, const std::vector<Attribute> &attrs, char* byteSeq, RecLength & recordLen);
+        static RC rawDataToRecordByte(char* rawData, const std::vector<Attribute> &attrs, char* byteSeq, short & recordLen);
         static RC recordByteToRawData(char record[], const short recordLen, const std::vector<Attribute> &recordDescriptor, char* data);
 
         //static bool isAttrNull(char* data, unsigned index);
         //static void setAttrNull(char* data, unsigned index);
+        RecordHandle();
+        ~RecordHandle();
 
     };
 } // namespace PeterDB

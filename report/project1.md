@@ -48,9 +48,8 @@
 ### 4. Page Management
 
 - Show your algorithm of finding next available-space page when inserting a record.
-    1. Check if current page is available. if yes, return page number
-    2. Traverse all pages from page 0 sequentially and return the first available page number
-    3. If no present available page, then append a new page and insert record
+    1. Traverse all pages from last page to page 0 sequentially and return the first available page number
+    2. If no present available page, then append a new page and insert record
 
 - How many hidden pages are utilized in your design?
     1. Only 1

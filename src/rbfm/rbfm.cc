@@ -49,8 +49,8 @@ namespace PeterDB {
             std::cout << "Fail to Convert Record to Byte Seq @ RecordBasedFileManager::insertRecord" << std::endl;
             return rc;
         }
-        //todo print
-        rh.recordBytePrint(pageBuffer, recordDescriptor);
+
+        rh.printNullAttr(pageBuffer, recordDescriptor);
 
         char buffer[recByteLen];
         memcpy(buffer, pageBuffer, recByteLen);
@@ -83,9 +83,6 @@ namespace PeterDB {
         RecordHandle rh;
         rh.recordByteToRawData(buffer, recByteLen, recordDescriptor, (char *)data);
 
-        // todo
-        std::stringstream stream;
-        printRecord(recordDescriptor, data, stream);
         return 0;
     }
 

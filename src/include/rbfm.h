@@ -165,7 +165,6 @@ namespace PeterDB {
         short getSlotSize();
         // N|F
         short getHeaderLength();
-        short getSlotListLength();
 
         short getSlotCounterOffset();
         short getFreeBytePointerOffset();
@@ -182,7 +181,7 @@ namespace PeterDB {
         RecordHandle();
         ~RecordHandle();
 
-        RC recordBytePrint(char *recordByte, const std::vector<Attribute> &recordDescriptor);
+        RC printNullAttr(char *recordByte, const std::vector<Attribute> &recordDescriptor);
         RC getNullFlag(char* recordByte, const std::vector<Attribute> &recordDescriptor, char *nullFlag);
         };
 } // namespace PeterDB

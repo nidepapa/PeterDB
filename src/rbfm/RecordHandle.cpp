@@ -4,6 +4,7 @@
 #include <cmath>
 #include "src/include/rbfm.h"
 #include <iostream>
+#include <iterator>
 
 namespace PeterDB {
     RecordHandle::RecordHandle() = default;
@@ -110,7 +111,7 @@ namespace PeterDB {
         return 0;
     }
 
-    RC RecordHandle::recordBytePrint(char* recordByte, const std::vector<Attribute> &recordDescriptor){
+    RC RecordHandle::printNullAttr(char* recordByte, const std::vector<Attribute> &recordDescriptor){
         char AttrNum[2];
 
         short attrNum = recordDescriptor.size();
@@ -118,7 +119,7 @@ namespace PeterDB {
         // 1. write into not null value
         short attrDirectoryPos =  sizeof(short);
         short valPos = attrDirectoryPos + attrNum * sizeof(short);
-        short prev = attrDirectoryPos, curr = 0;
+        short prev = valPos, curr = 0;
 
         for(short i = 0; i < attrNum; i++, attrDirectoryPos += sizeof(short)){
             memcpy(&curr, recordByte + attrDirectoryPos, sizeof(short));
@@ -148,7 +149,10 @@ namespace PeterDB {
                         // 2. write varchar
                         memcpy(val3, recordByte + valPos, strLen);
                         valPos += strLen;
-                        std::cout << "@ recordByte:" << recordDescriptor[i].name << ": " << *((char *)val3) << std::endl;
+                        std::cout << "@ recordByte:" << recordDescriptor[i].name << ": ";
+                        std::copy(val3, val3 + strLen,
+                                  std::ostream_iterator<char>(std::cout, ""));
+                        std::cout << std::endl;
                         break;
                 }
             }
@@ -173,7 +177,7 @@ namespace PeterDB {
 
     RC RecordHandle::getNullFlag(char* recordByte, const std::vector<Attribute> &recordDescriptor, char *nullFlag){
         short AttrNum = recordDescriptor.size();
-        // init
+        // init to 0 explicitly, or will be set random value in c++
         for(int i = 0; i < sizeof(nullFlag); i++) {
             nullFlag[i] = 0;
         }

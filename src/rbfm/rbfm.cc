@@ -1,4 +1,7 @@
+#include <cmath>
 #include "src/include/rbfm.h"
+#include <iostream>
+#include <sstream>
 
 namespace PeterDB {
     RecordBasedFileManager &RecordBasedFileManager::instance() {
@@ -32,15 +35,24 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, RID &rid) {
+        RC rc = 0;
         // 1. check file state
         if (!fileHandle.isFileOpen()) return -1;
         // 2. convert raw data to byte sequence
         RecordHandle rh = RecordHandle();
         char pageBuffer[PAGE_SIZE] = {};
         short recByteLen = 0;
-        char buffer[recByteLen];
 
-        rh.rawDataToRecordByte((char*) data, recordDescriptor, pageBuffer, recByteLen);
+
+        rc = rh.rawDataToRecordByte((char*) data, recordDescriptor, pageBuffer, recByteLen);
+        if(rc) {
+            std::cout << "Fail to Convert Record to Byte Seq @ RecordBasedFileManager::insertRecord" << std::endl;
+            return rc;
+        }
+        //todo print
+        rh.recordBytePrint(pageBuffer, recordDescriptor);
+
+        char buffer[recByteLen];
         memcpy(buffer, pageBuffer, recByteLen);
 
         // 3. find a page
@@ -51,6 +63,8 @@ namespace PeterDB {
         // 4. insert binary data
         thisPage.insertRecordInByte(buffer, recByteLen, rid);
 
+        std::stringstream stream;
+        printRecord(recordDescriptor, data, stream);
         return 0;
     }
 
@@ -68,6 +82,10 @@ namespace PeterDB {
         // 3. convert binary to raw data
         RecordHandle rh;
         rh.recordByteToRawData(buffer, recByteLen, recordDescriptor, (char *)data);
+
+        // todo
+        std::stringstream stream;
+        printRecord(recordDescriptor, data, stream);
         return 0;
     }
 
@@ -78,7 +96,54 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::printRecord(const std::vector<Attribute> &recordDescriptor, const void *data,
                                            std::ostream &out) {
+        int dataPos = ceil(recordDescriptor.size() / 8.0);
+        RecordHandle rh;
+        const std::string separator = " ";
+        char buffer[PAGE_SIZE];
 
+        for(short i = 0; i < recordDescriptor.size(); i++) {
+            // start
+            out << recordDescriptor[i].name << ":" << separator;
+            // value
+            if(rh.isNullAttr((char*)data, i)) {
+                out << "NULL";
+            }else{
+                switch (recordDescriptor[i].type) {
+                    case TypeInt:
+                        int intVal;
+                        memcpy(&intVal, (char *)data + dataPos, sizeof(int));
+                        dataPos += sizeof(int);
+                        out << intVal;
+                        break;
+                    case TypeReal:
+                        float floatVal;
+                        memcpy(&floatVal, (char *)data + dataPos, sizeof(float));
+                        dataPos += sizeof(float);
+                        out << floatVal;
+                        break;
+                    case TypeVarChar:
+                        unsigned strLen;
+                        // Get String Len
+                        memcpy(&strLen, (char *)data + dataPos, sizeof(int));
+                        dataPos += sizeof(int);
+                        memcpy(buffer, (char *)data + dataPos, strLen);
+                        buffer[strLen] = '\0';
+                        dataPos += strLen;
+                        out << buffer;
+                        break;
+                    default:
+                        std::cout << "Invalid DataType Error" << std::endl;
+                        break;
+                }
+            }
+            // ending
+            if(i != recordDescriptor.size() - 1) {
+                out << ',' << separator;
+            }
+            else {
+                out << std::endl;
+            }
+        }
         return 0;
     }
 
@@ -108,8 +173,17 @@ namespace PeterDB {
             availablePageNum = fileHandle.getNumberOfPages() - 1;
             return 0;
         }
-        // traverse all pages reversely
-        for (PageNum i = pageCount - 1; i >= 0; i--){
+
+        // check if last page is available
+        PageNum lastPageNum = fileHandle.getNumberOfPages() - 1;
+        PageHandle lastPage(fileHandle, lastPageNum);
+        if (lastPage.IsFreeSpaceEnough(recLength)){
+            availablePageNum = lastPageNum;
+            return 0;
+        }
+
+        // traverse all pages from beginning
+        for (PageNum i = 0 ; i <= lastPageNum; i++){
             PageHandle ithPage(fileHandle, i);
             if (ithPage.IsFreeSpaceEnough(recLength)){
                 availablePageNum = i;

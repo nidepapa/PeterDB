@@ -175,15 +175,16 @@ namespace PeterDB {
 
     class RecordHandle {
     public:
-        static RC rawDataToRecordByte(char* rawData, const std::vector<Attribute> &attrs, char* byteSeq, short & recordLen);
-        static RC recordByteToRawData(char record[], const short recordLen, const std::vector<Attribute> &recordDescriptor, char* data);
+        RC rawDataToRecordByte(char* rawData, const std::vector<Attribute> &attrs, char* byteSeq, short & recordLen);
+        RC recordByteToRawData(char record[], const short recordLen, const std::vector<Attribute> &recordDescriptor, char* data);
 
-        //static bool isAttrNull(char* data, unsigned index);
-        //static void setAttrNull(char* data, unsigned index);
+        bool isNullAttr(char* rawData, short idx);
         RecordHandle();
         ~RecordHandle();
 
-    };
+        RC recordBytePrint(char *recordByte, const std::vector<Attribute> &recordDescriptor);
+        RC getNullFlag(char* recordByte, const std::vector<Attribute> &recordDescriptor, char *nullFlag);
+        };
 } // namespace PeterDB
 
 #endif // _rbfm_h_

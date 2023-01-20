@@ -1,5 +1,6 @@
 #include "src/include/pfm.h"
 #include <cstdio>
+#include <iostream>
 
 using namespace std;
 
@@ -65,15 +66,15 @@ namespace PeterDB {
 
     RC FileHandle::openFile(const std::string& fileName){
         RC code = 0;
-        if (fileIsOpen){
-            goto err;
+        if (isFileOpen()){
+            // reopenfile;
         }
         // open file as binary
         fileInMemory = fopen(fileName.c_str(), "r+b");
         fileIsOpen = true;
         FileHandle::fileName = fileName;
-
-        if (!readMetadata()) goto err;
+        code = readMetadata();
+        if (code) goto err;
         return 0;
     err:
         fclose(fileInMemory);
@@ -85,6 +86,7 @@ namespace PeterDB {
         fileIsOpen = false;
         flushMetadata();
         fclose(fileInMemory);
+        hdr = {};
         return 0;
     }
 
@@ -153,7 +155,7 @@ namespace PeterDB {
         clearerr(PeterDB::FileHandle::fileInMemory);
         fseek(fileInMemory, 0, SEEK_SET);
 
-        fwrite(&hdr, File_Header_Page_Size, 1, fileInMemory);
+        fwrite(&hdr, sizeof(hdr), 1, fileInMemory);
         fflush(fileInMemory);
         return 0;
     }
@@ -162,9 +164,7 @@ namespace PeterDB {
         if (!fileIsOpen) return -1;
         fseek(fileInMemory, 0 ,SEEK_SET);
         clearerr(PeterDB::FileHandle::fileInMemory);
-        RC result = fread(&hdr, sizeof(FileHeader), 1, fileInMemory);
-
-        if (result != sizeof(FileHeader)) return -1;
+        fread(&hdr, sizeof(hdr), 1, fileInMemory);
         return 0;
     }
 

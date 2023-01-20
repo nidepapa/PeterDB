@@ -10,20 +10,18 @@
 ### 2. Internal Record Format
 
 - Show your record format design.
-  ![record_format.jpg](record_format.jpg)
+  ![record_format.pic.jpg](record_format.pic.jpg)
 
 | AttrNum | Null Flags | Attr Directory    | Attr Values |
 |---------|------------|-------------------|-------------|
 | 2 byte  | Variable   | 2 * Attr Num byte | Variable    |
 
 1. AttrNum: number of attribute
-2. Null Flags: a bitmap used to represent null value in the record, Ex: 0100 means the third attribute filed is null.
-3. Attr Directory: an array of pointer, each pointer points to the ending byte of that attribute
-4. Attr Value: concatenation of all attribute value in byte sequence
+2. Attr Directory: an array of pointer, each pointer points to the ending byte of that attribute, it will be -1 for null 
+3. Attr Value: concatenation of all attribute value in byte sequence
 
 - Describe how you store a null field.
-    1. A bitmap used to represent null value in the record, Ex: 0100 means the third attribute filed is null.
-       The size of null bitmap is ceil(number of fields in a record / 8)
+    1. the value in Attr Directory for a null field would be -1
 
 
 - Describe how you store a VarChar field.
@@ -48,8 +46,9 @@
 ### 4. Page Management
 
 - Show your algorithm of finding next available-space page when inserting a record.
-    1. Traverse all pages from last page to page 0 sequentially and return the first available page number
-    2. If no present available page, then append a new page and insert record
+    1. check if last page has enough free space, if it does , insert directly
+    2. Traverse all pages from last page to page 0 sequentially and return the first available page number
+  3If no present available page, then append a new page and insert record
 
 - How many hidden pages are utilized in your design?
     1. Only 1

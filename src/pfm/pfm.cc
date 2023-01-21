@@ -123,6 +123,7 @@ namespace PeterDB {
         }
         // update counter
         writePageCounter = writePageCounter + 1;
+        flushMetadata();
         return 0;
     }
 

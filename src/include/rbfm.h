@@ -98,8 +98,7 @@ namespace PeterDB {
                         RID &rid);
 
         // Read a record identified by the given rid.
-        RC
-        readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data);
+        RC readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data);
 
         // Print the record that is passed to this utility method.
         // This method will be mainly used for debugging/testing.
@@ -109,10 +108,12 @@ namespace PeterDB {
         //        age: NULL  height: 7.5  salary: 7500)
         RC printRecord(const std::vector<Attribute> &recordDescriptor, const void *data, std::ostream &out);
 
-        /*****************************************************************************************************
-        * IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) *
-        * are NOT required to be implemented for Project 1                                                   *
-        *****************************************************************************************************/
+        RC getAvailablePage(FileHandle& fileHandle, short recLength, PageNum& availablePageNum);
+
+            /*****************************************************************************************************
+            * IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) *
+            * are NOT required to be implemented for Project 1                                                   *
+            *****************************************************************************************************/
         // Delete a record identified by the given rid.
         RC deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid);
 
@@ -140,7 +141,49 @@ namespace PeterDB {
         RecordBasedFileManager &operator=(const RecordBasedFileManager &);          // Prevent assignment
 
     };
+    //slot n|...|slot 1|N|F
+    class PageHandle {
+    public:
+        FileHandle& fh;
+        PageNum pageNum;
+        //flags
+        short freeBytePointer;
+        short slotCounter;
+        //page data
+        char dataSeq[PAGE_SIZE] = {};
 
+        bool IsFreeSpaceEnough(int recLength);
+
+        RC insertRecordInByte(char byteSeq[], short recLength, RID& rid);
+        RC getRecordInByte(short slotNum, char recordByteSeq[], short& recLength);
+
+        PageHandle(FileHandle& fileHandle, PageNum pageNum);
+        ~PageHandle();
+
+    private:
+        short getFlagsLength();
+        short getSlotSize();
+        // N|F
+        short getHeaderLength();
+
+        short getSlotCounterOffset();
+        short getFreeBytePointerOffset();
+        // Slot Num start from 1
+        short getSlotOffset(short slotNum);
+    };
+
+    class RecordHandle {
+    public:
+        RC rawDataToRecordByte(char* rawData, const std::vector<Attribute> &attrs, char* byteSeq, short & recordLen);
+        RC recordByteToRawData(char record[], const short recordLen, const std::vector<Attribute> &recordDescriptor, char* data);
+
+        bool isNullAttr(char* rawData, short idx);
+        RecordHandle();
+        ~RecordHandle();
+
+        RC printNullAttr(char *recordByte, const std::vector<Attribute> &recordDescriptor);
+        RC getNullFlag(char* recordByte, const std::vector<Attribute> &recordDescriptor, char *nullFlag);
+        };
 } // namespace PeterDB
 
 #endif // _rbfm_h_

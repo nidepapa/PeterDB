@@ -168,7 +168,6 @@ namespace PeterDB {
 
         short getSlotCounterOffset();
         short getFreeBytePointerOffset();
-        // Slot Num start from 1
         short getSlotOffset(short slotNum);
     };
 
@@ -183,7 +182,9 @@ namespace PeterDB {
 
         RC printNullAttr(char *recordByte, const std::vector<Attribute> &recordDescriptor);
         RC getNullFlag(char* recordByte, const std::vector<Attribute> &recordDescriptor, char *nullFlag);
-        };
+
+        void setAttrNull(char *data, unsigned int index);
+    };
 } // namespace PeterDB
 
 #endif // _rbfm_h_

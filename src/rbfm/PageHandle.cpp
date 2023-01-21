@@ -4,7 +4,7 @@
 
 #include "src/include/rbfm.h"
 #include <cstring>
-#include <typeinfo>
+
 
 namespace PeterDB {
     PageHandle::PageHandle(FileHandle& fileHandle, PageNum pageNum):fh(fileHandle), pageNum(pageNum) {
@@ -53,7 +53,7 @@ namespace PeterDB {
     }
 
     short PageHandle::getFlagsLength(){
-        return sizeof(typeid(freeBytePointer).name()) + sizeof(typeid(slotCounter).name());
+        return sizeof(short) * 2;
     }
 
     short PageHandle::getHeaderLength(){
@@ -65,7 +65,7 @@ namespace PeterDB {
         return PAGE_SIZE - getFlagsLength();
     }
     short PageHandle::getFreeBytePointerOffset(){
-        return PAGE_SIZE - sizeof(typeid(freeBytePointer).name());
+        return PAGE_SIZE - sizeof(short);
     }
     // start from 1
     short PageHandle::getSlotOffset(short slotNum){
@@ -74,7 +74,8 @@ namespace PeterDB {
 
     bool PageHandle::IsFreeSpaceEnough(int recLength){
         short freeSpace = PAGE_SIZE - freeBytePointer - getHeaderLength();
-        return freeSpace >= recLength;
+        // record + 1 slot !!!
+        return freeSpace >= (recLength + getSlotSize());
     }
 }
 

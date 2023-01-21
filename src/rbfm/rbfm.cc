@@ -51,7 +51,7 @@ namespace PeterDB {
             return rc;
         }
 
-        rh.printNullAttr(pageBuffer, recordDescriptor);
+        //rh.printNullAttr(pageBuffer, recordDescriptor);
 
         char buffer[recByteLen];
         memcpy(buffer, pageBuffer, recByteLen);
@@ -64,8 +64,6 @@ namespace PeterDB {
         // 4. insert binary data
         thisPage.insertRecordInByte(buffer, recByteLen, rid);
 
-        std::stringstream stream;
-        printRecord(recordDescriptor, data, stream);
         return 0;
     }
 

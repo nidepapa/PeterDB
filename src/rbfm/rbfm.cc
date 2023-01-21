@@ -2,6 +2,7 @@
 #include "src/include/rbfm.h"
 #include <iostream>
 #include <sstream>
+#include <cstring>
 
 namespace PeterDB {
     RecordBasedFileManager &RecordBasedFileManager::instance() {

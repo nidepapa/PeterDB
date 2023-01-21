@@ -3,6 +3,7 @@
 //
 
 #include "../include/pfm.h"
+#include <cstring>
 
 int main(){
     PeterDB::PagedFileManager* pfm;

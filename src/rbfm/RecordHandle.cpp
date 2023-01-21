@@ -5,6 +5,7 @@
 #include "src/include/rbfm.h"
 #include <iostream>
 #include <iterator>
+#include <cstring>
 
 namespace PeterDB {
     RecordHandle::RecordHandle() = default;

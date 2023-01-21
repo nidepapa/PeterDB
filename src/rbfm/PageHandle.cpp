@@ -3,6 +3,8 @@
 //
 
 #include "src/include/rbfm.h"
+#include <cstring>
+#include <typeinfo>
 
 namespace PeterDB {
     PageHandle::PageHandle(FileHandle& fileHandle, PageNum pageNum):fh(fileHandle), pageNum(pageNum) {

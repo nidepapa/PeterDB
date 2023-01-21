@@ -155,7 +155,7 @@ namespace PeterDB {
         bool IsFreeSpaceEnough(int recLength);
 
         RC insertRecordInByte(char byteSeq[], short recLength, RID& rid);
-        RC getRecordInByte(short slotNum, char recordByteSeq[], short& recLength);
+        RC getRecordInByte(short slotNum, char* recordByteSeq, short& recLength);
 
         PageHandle(FileHandle& fileHandle, PageNum pageNum);
         ~PageHandle();

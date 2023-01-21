@@ -1,5 +1,7 @@
 #include "src/include/pfm.h"
 #include <cstdio>
+#include <typeinfo>
+#include <cstring>
 
 using namespace std;
 

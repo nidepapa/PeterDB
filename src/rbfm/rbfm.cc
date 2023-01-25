@@ -53,6 +53,7 @@ namespace PeterDB {
 
         //rh.printNullAttr(pageBuffer, recordDescriptor);
 
+
         char buffer[recByteLen];
         memcpy(buffer, pageBuffer, recByteLen);
 
@@ -63,7 +64,6 @@ namespace PeterDB {
 
         // 4. insert binary data
         thisPage.insertRecordInByte(buffer, recByteLen, rid);
-
         return 0;
     }
 

@@ -66,6 +66,7 @@ namespace PeterDB {
     }
     short PageHandle::getFreeBytePointerOffset(){
         return PAGE_SIZE - sizeof(short);
+
     }
     // start from 1
     short PageHandle::getSlotOffset(short slotNum){

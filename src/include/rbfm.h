@@ -52,6 +52,28 @@ namespace PeterDB {
     //  }
     //  rbfmScanIterator.close();
 
+
+    // type for raw data
+    typedef uint32_t RawDataStrLen;
+    // type for record
+    typedef uint8_t Flag;
+    typedef uint8_t PlaceHolder;
+    typedef uint16_t AttrNum;
+    typedef uint16_t AttrDir;
+
+    // type for page
+    typedef uint16_t FreeBytePointer;
+    typedef uint16_t SlotCounter;
+    typedef int16_t SlotOffset;
+    typedef int16_t SlotLen;
+
+    // constant value for record
+    const Flag RECORD_FLAG_DATA = 0;
+    const Flag RECORD_FLAG_POINTER = 1;
+    const PlaceHolder RECORD_PLACEHOLDER = 0;
+
+
+
     class RBFM_ScanIterator {
     public:
         RBFM_ScanIterator() = default;;
@@ -108,7 +130,7 @@ namespace PeterDB {
         //        age: NULL  height: 7.5  salary: 7500)
         RC printRecord(const std::vector<Attribute> &recordDescriptor, const void *data, std::ostream &out);
 
-        RC getAvailablePage(FileHandle& fileHandle, short recLength, PageNum& availablePageNum);
+        RC getAvailablePage(FileHandle& fileHandle, int16_t recLength, PageNum& availablePageNum);
 
             /*****************************************************************************************************
             * IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) *
@@ -142,48 +164,44 @@ namespace PeterDB {
 
     };
     //slot n|...|slot 1|N|F
-    class PageHandle {
+    class PageHelper {
     public:
         FileHandle& fh;
         PageNum pageNum;
-        //flags
-        short freeBytePointer;
-        short slotCounter;
+        FreeBytePointer freeBytePointer;
+        SlotCounter slotCounter;
         //page data
-        char dataSeq[PAGE_SIZE] = {};
+        int8_t dataSeq[PAGE_SIZE] = {};
 
-        bool IsFreeSpaceEnough(int recLength);
+        bool IsFreeSpaceEnough(int32_t recLength);
 
-        RC insertRecordInByte(char byteSeq[], short recLength, RID& rid);
-        RC getRecordInByte(short slotNum, char* recordByteSeq, short& recLength);
+        RC insertRecordInByte(int8_t byteSeq[], int16_t recLength, RID& rid);
+        RC getRecordInByte(int16_t slotNum, int8_t* recordByteSeq, int16_t& recLength);
 
-        PageHandle(FileHandle& fileHandle, PageNum pageNum);
-        ~PageHandle();
+        PageHelper(FileHandle& fileHandle, PageNum pageNum);
+        ~PageHelper();
 
     private:
-        short getFlagsLength();
-        short getSlotSize();
-        // N|F
-        short getHeaderLength();
-
-        short getSlotCounterOffset();
-        short getFreeBytePointerOffset();
-        short getSlotOffset(short slotNum);
+        int16_t getFlagsLength();
+        int16_t getSlotSize();
+        int16_t getHeaderLength();
+        int16_t getSlotCounterOffset();
+        int16_t getFreeBytePointerOffset();
+        int16_t getSlotOffset(int16_t slotNum); // start from 1
     };
 
-    class RecordHandle {
+    class RecordHelper {
     public:
-        RC rawDataToRecordByte(char* rawData, const std::vector<Attribute> &attrs, char* byteSeq, short & recordLen);
-        RC recordByteToRawData(char record[], const short recordLen, const std::vector<Attribute> &recordDescriptor, char* data);
+        RC rawDataToRecordByte(int8_t* rawData, const std::vector<Attribute> &attrs, int8_t* byteSeq, int16_t & recordLen);
+        RC recordByteToRawData(int8_t record[], const int16_t recordLen, const std::vector<Attribute> &recordDescriptor, int8_t* data);
 
-        bool isNullAttr(char* rawData, short idx);
-        RecordHandle();
-        ~RecordHandle();
+        bool isNullAttr(int8_t* rawData, int16_t idx);
+        RecordHelper();
+        ~RecordHelper();
 
         RC printNullAttr(char *recordByte, const std::vector<Attribute> &recordDescriptor);
-        RC getNullFlag(char* recordByte, const std::vector<Attribute> &recordDescriptor, char *nullFlag);
+        RC getNullFlag(int8_t* recordByte, const std::vector<Attribute> &recordDescriptor, int8_t *nullFlag);
 
-        void setAttrNull(char *data, unsigned int index);
     };
 } // namespace PeterDB
 

@@ -55,10 +55,10 @@ namespace PeterDB {
                                 unsigned &appendPageCount);                 // Put current counter values into variables
         bool isFileOpen();
     private:
-        unsigned pageCounter;
-        unsigned readPageCounter;
-        unsigned writePageCounter;
-        unsigned appendPageCounter;
+        uint32_t pageCounter;
+        uint32_t readPageCounter;
+        uint32_t writePageCounter;
+        uint32_t appendPageCounter;
 
         FILE *fileInMemory;                                                 // in memory file
         std::string fileName;

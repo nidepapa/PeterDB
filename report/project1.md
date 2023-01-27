@@ -62,8 +62,8 @@
 
 ### 5. Implementation Detail
 - I designed two helper class in OOD.
-  1. PageHandle: all operations that related to an exact page is done by this class like updating page metadata
-  2. RecordHandle: all operations that related to an exact page is done by this class like formatting raw data
+  1. PageHelper: all operations that related to an exact page is done by this class like updating page metadata
+  2. RecordHelper: all operations that related to an exact page is done by this class like formatting raw data
 
 ### 6. Member contribution (for team of two)
 

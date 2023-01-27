@@ -3,6 +3,7 @@
 #include <iostream>
 #include <sstream>
 #include <cstring>
+#include "src/include/errorCode.h"
 
 namespace PeterDB {
     RecordBasedFileManager &RecordBasedFileManager::instance() {
@@ -38,29 +39,25 @@ namespace PeterDB {
                                             const void *data, RID &rid) {
         RC rc = 0;
         // 1. check file state
-        if (!fileHandle.isFileOpen()) return -1;
+        if (!fileHandle.isFileOpen()) return ERR_RBFILE_NOT_OPEN;
         // 2. convert raw data to byte sequence
-        RecordHandle rh = RecordHandle();
-        char pageBuffer[PAGE_SIZE] = {};
+        RecordHelper rh = RecordHelper();
+        int8_t pageBuffer[PAGE_SIZE] = {};
         short recByteLen = 0;
 
-
-        rc = rh.rawDataToRecordByte((char*) data, recordDescriptor, pageBuffer, recByteLen);
+        rc = rh.rawDataToRecordByte((int8_t*) data, recordDescriptor, pageBuffer, recByteLen);
         if(rc) {
             std::cout << "Fail to Convert Record to Byte Seq @ RecordBasedFileManager::insertRecord" << std::endl;
             return rc;
         }
 
-        //rh.printNullAttr(pageBuffer, recordDescriptor);
-
-
-        char buffer[recByteLen];
+        int8_t buffer[recByteLen];
         memcpy(buffer, pageBuffer, recByteLen);
 
         // 3. find a page
         PageNum availablePageNum;
         getAvailablePage(fileHandle, recByteLen, availablePageNum);
-        PageHandle thisPage(fileHandle, availablePageNum);
+        PageHelper thisPage(fileHandle, availablePageNum);
 
         // 4. insert binary data
         thisPage.insertRecordInByte(buffer, recByteLen, rid);
@@ -70,17 +67,18 @@ namespace PeterDB {
     RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                           const RID &rid, void *data) {
         // 1. check file state and page validity
-        if (!fileHandle.isFileOpen() || rid.pageNum > fileHandle.getNumberOfPages() - 1) return -1;
+        if (!fileHandle.isFileOpen()) return ERR_RBFILE_NOT_OPEN;
+        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return ERR_RBFILE_PAGE_NOT_ENOUGH;
 
         // 2. get record in byte
-        PageHandle thisPage(fileHandle, rid.pageNum);
-        char buffer[PAGE_SIZE] = {};
+        PageHelper thisPage(fileHandle, rid.pageNum);
+        int8_t buffer[PAGE_SIZE] = {};
         short recByteLen = 0;
         thisPage.getRecordInByte(rid.slotNum, buffer, recByteLen);
 
         // 3. convert binary to raw data
-        RecordHandle rh;
-        rh.recordByteToRawData(buffer, recByteLen, recordDescriptor, (char *)data);
+        RecordHelper rh;
+        rh.recordByteToRawData(buffer, recByteLen, recordDescriptor, (int8_t *)data);
 
         return 0;
     }
@@ -93,7 +91,7 @@ namespace PeterDB {
     RC RecordBasedFileManager::printRecord(const std::vector<Attribute> &recordDescriptor, const void *data,
                                            std::ostream &out) {
         int dataPos = ceil(recordDescriptor.size() / 8.0);
-        RecordHandle rh;
+        RecordHelper rh;
         const std::string separator = " ";
         char buffer[PAGE_SIZE];
 
@@ -101,7 +99,7 @@ namespace PeterDB {
             // start
             out << recordDescriptor[i].name << ":" << separator;
             // value
-            if(rh.isNullAttr((char*)data, i)) {
+            if(rh.isNullAttr((int8_t*)data, i)) {
                 out << "NULL";
             }else{
                 switch (recordDescriptor[i].type) {
@@ -172,7 +170,7 @@ namespace PeterDB {
 
         // check if last page is available
         PageNum lastPageNum = fileHandle.getNumberOfPages() - 1;
-        PageHandle lastPage(fileHandle, lastPageNum);
+        PageHelper lastPage(fileHandle, lastPageNum);
         if (lastPage.IsFreeSpaceEnough(recLength)){
             availablePageNum = lastPageNum;
             return 0;
@@ -180,7 +178,7 @@ namespace PeterDB {
 
         // traverse all pages from beginning
         for (PageNum i = 0 ; i <= lastPageNum; i++){
-            PageHandle ithPage(fileHandle, i);
+            PageHelper ithPage(fileHandle, i);
             if (ithPage.IsFreeSpaceEnough(recLength)){
                 availablePageNum = i;
                 return 0;

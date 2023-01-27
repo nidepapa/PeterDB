@@ -8,32 +8,39 @@
 #include <cstring>
 
 namespace PeterDB {
-    RecordHandle::RecordHandle() = default;
+    RecordHelper::RecordHelper() = default;
 
-    RecordHandle::~RecordHandle() = default;
+    RecordHelper::~RecordHelper() = default;
 
     // ("Tom", 25, "UCIrvine", 3.1415, 100)
     // [1 byte for the null-indicators for the fields: bit 00000000] [4 bytes for the length 3] [3 bytes for the string "Tom"] [4 bytes for the integer value 25] [4 bytes for the length 8] [8 bytes for the string "UCIrvine"] [4 bytes for the float value 3.1415] [4 bytes for the integer value 100]
     // covert a raw data to a byte sequence with metadata as header
     RC
-    RecordHandle::rawDataToRecordByte(char *rawData, const std::vector<Attribute> &recordDescriptor, char *recordByte,
-                                      short &recordLen) {
+    RecordHelper::rawDataToRecordByte(int8_t *rawData, const std::vector<Attribute> &recordDescriptor, int8_t *recordByte,
+                                      int16_t &recordLen) {
 
-        // 1. write attrNum
-        short attrNum = recordDescriptor.size();
-        memcpy(recordByte, &attrNum, sizeof(short));
-        // 2. calculate offset
-        short nullFlagLenInByte = ceil(attrNum / 8.0);
-        short dirOffset = sizeof(short);
-        short valOffset = dirOffset + sizeof(short) * attrNum;
+        // 1. write flag and placeholder
+        Flag fg = RECORD_FLAG_DATA;
+        memcpy(recordByte, &fg, sizeof(Flag));
 
-        // 3.write directory and each attribute raw data
-        short dirPos = dirOffset, valPos = valOffset, rawDataPos = sizeof(char) * nullFlagLenInByte;
+        PlaceHolder ph = RECORD_PLACEHOLDER;
+        memcpy(recordByte + sizeof(Flag), &ph, sizeof(PlaceHolder));
+
+        // 2. write attrNum
+        AttrNum attrNum = recordDescriptor.size();
+        memcpy(recordByte + sizeof(Flag) + sizeof(PlaceHolder), &attrNum, sizeof(AttrNum));
+        // 3. calculate offset
+        int16_t nullFlagLenInByte = ceil(attrNum / 8.0);
+        int16_t dirOffset = sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum);
+        int16_t valOffset = dirOffset + sizeof(AttrDir) * attrNum;
+
+        // 4. write directory and each attribute raw data
+        int16_t dirPos = dirOffset, valPos = valOffset, rawDataPos = sizeof(int8_t) * nullFlagLenInByte;
         // directory move right by 2 byte
-        for (short i = 0; i < attrNum; i++, dirPos += sizeof(short)) {
+        for (short i = 0; i < attrNum; i++, dirPos += sizeof(AttrDir)) {
             if (isNullAttr(rawData, i)) {
                 short valEndPos = -1;
-                memcpy(recordByte + dirPos, &valEndPos, sizeof(short));
+                memcpy(recordByte + dirPos, &valEndPos, sizeof(AttrDir));
                 continue;
             }
             switch (recordDescriptor[i].type) {
@@ -43,19 +50,19 @@ namespace PeterDB {
                     rawDataPos += recordDescriptor[i].length;
                     valPos += recordDescriptor[i].length;
                     // set directory
-                    memcpy(recordByte + dirPos, &valPos, sizeof(short));
+                    memcpy(recordByte + dirPos, &valPos, sizeof(AttrDir));
                     break;
                 case TypeVarChar:
-                    int strLen;
+                    RawDataStrLen strLen;
                     // get varchar length
-                    memcpy(&strLen, rawData + rawDataPos, sizeof(int));
-                    rawDataPos += sizeof(int);
+                    memcpy(&strLen, rawData + rawDataPos, sizeof(RawDataStrLen));
+                    rawDataPos += sizeof(RawDataStrLen);
                     // copy string
                     memcpy(recordByte + valPos, rawData + rawDataPos, strLen);
                     rawDataPos += strLen;
                     valPos += strLen;
                     // set directory
-                    memcpy(recordByte + dirPos, &valPos, sizeof(short));
+                    memcpy(recordByte + dirPos, &valPos, sizeof(AttrDir));
                     break;
             }
         }
@@ -64,26 +71,24 @@ namespace PeterDB {
     }
 
     // convert byte(with metadata) into a struct data according to the recordDescriptor
-    RC RecordHandle::recordByteToRawData(char *recordByte, const short recordLen,
-                                         const std::vector<Attribute> &recordDescriptor, char *rawData) {
-
-
-        short attrNum = recordDescriptor.size();
+    RC RecordHelper::recordByteToRawData(int8_t *recordByte, const int16_t recordLen,
+                                         const std::vector<Attribute> &recordDescriptor, int8_t *rawData) {
+        int16_t attrNum = recordDescriptor.size();
         // 1. get null flags
-        short nullFlagLenInByte = ceil(attrNum / 8.0);
-        char nullFlag[nullFlagLenInByte];
+        int16_t nullFlagLenInByte = ceil(attrNum / 8.0);
+        int8_t nullFlag[nullFlagLenInByte];
         getNullFlag(recordByte, recordDescriptor, nullFlag);
         memcpy(rawData, nullFlag, nullFlagLenInByte);
 
         // 2. write into not null value
         short rawDataPos = sizeof(char) * nullFlagLenInByte;
-        short attrDirectoryPos = sizeof(short);
-        short valPos = attrDirectoryPos + attrNum * sizeof(short);
+        short attrDirectoryPos = sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum);
+        short valPos = attrDirectoryPos + attrNum * sizeof(AttrDir);
         short prev = valPos, curr = 0;
 
-        for (short i = 0; i < attrNum; i++, attrDirectoryPos += sizeof(short)) {
+        for (short i = 0; i < attrNum; i++, attrDirectoryPos += sizeof(AttrDir)) {
             if (!isNullAttr(rawData, i)) {
-                memcpy(&curr, recordByte + attrDirectoryPos, sizeof(short));
+                memcpy(&curr, recordByte + attrDirectoryPos, sizeof(AttrDir));
 
                 switch (recordDescriptor[i].type) {
                     case TypeInt:
@@ -98,11 +103,11 @@ namespace PeterDB {
                         break;
                     case TypeVarChar:
                         // 1. write varchar length
-                        int strLen;
+                        RawDataStrLen strLen;
                         strLen = curr - prev;
-                        memcpy(rawData + rawDataPos, &strLen, sizeof(int));
+                        memcpy(rawData + rawDataPos, &strLen, sizeof(RawDataStrLen));
 
-                        rawDataPos += sizeof(int);
+                        rawDataPos += sizeof(RawDataStrLen);
                         // 2. write varchar
                         memcpy(rawData + rawDataPos, recordByte + valPos, strLen);
                         valPos += strLen;
@@ -119,7 +124,7 @@ namespace PeterDB {
         return 0;
     }
 
-    RC RecordHandle::printNullAttr(char *recordByte, const std::vector<Attribute> &recordDescriptor) {
+    RC RecordHelper::printNullAttr(char *recordByte, const std::vector<Attribute> &recordDescriptor) {
         char AttrNum[2];
 
         short attrNum = recordDescriptor.size();
@@ -177,7 +182,7 @@ namespace PeterDB {
 
     }
 
-    bool RecordHandle::isNullAttr(char *rawData, short idx) {
+    bool RecordHelper::isNullAttr(int8_t *rawData, int16_t idx) {
         short byteNumber = idx / 8;
         short bitNumber = idx % 8;
         uint8_t mask = 0x01;
@@ -186,29 +191,23 @@ namespace PeterDB {
         return (tmp >> (7 - bitNumber)) & mask;
     }
 
-    RC RecordHandle::getNullFlag(char *recordByte, const std::vector<Attribute> &recordDescriptor, char *nullFlag) {
-        short AttrNum = recordDescriptor.size();
+    RC RecordHelper::getNullFlag(int8_t *recordByte, const std::vector<Attribute> &recordDescriptor, int8_t *nullFlag) {
+        int16_t AttrNum = recordDescriptor.size();
         // init to 0 explicitly, or will be set random value in c++
         for (int i = 0; i < sizeof(nullFlag); i++) {
             nullFlag[i] = 0;
         }
         for (int i = 0; i < AttrNum; i++) {
             short valPos = 0;
-            memcpy(&valPos, recordByte + sizeof(short) * (i + 1), sizeof(short));
+            memcpy(&valPos, recordByte + sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum) + sizeof(AttrDir) * i, sizeof(AttrDir));
             if (valPos < 0) {
                 // is null
-                short bytePos = i / 8;
-                short bitPos = i % 8;
+                int16_t bytePos = i / 8;
+                int16_t bitPos = i % 8;
                 nullFlag[bytePos] = nullFlag[bytePos] | (0x01 << (7 - bitPos));
             }
         }
         return 0;
-    }
-
-    void RecordHandle::setAttrNull(char *data, unsigned index) {
-        unsigned byteIndex = index / 8;
-        unsigned bitIndex = index % 8;
-        data[byteIndex] = data[byteIndex] | (0x1 << (7 - bitIndex));
     }
 
 }

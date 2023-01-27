@@ -1,5 +1,6 @@
 #include "src/include/pfm.h"
 #include <cstdio>
+#include <typeinfo>
 #include <cstring>
 
 using namespace std;
@@ -55,11 +56,10 @@ namespace PeterDB {
     }
 
     FileHandle::FileHandle() {
-        FileHeader hdr;
-        hdr.pageCounter = 0;
-        hdr.readPageCounter = 0;
-        hdr.writePageCounter = 0;
-        hdr.appendPageCounter = 0;
+        pageCounter = 0;
+        readPageCounter = 0;
+        writePageCounter = 0;
+        appendPageCounter = 0;
     }
 
     FileHandle::~FileHandle() = default;
@@ -86,7 +86,6 @@ namespace PeterDB {
         fileIsOpen = false;
         flushMetadata();
         fclose(fileInMemory);
-        hdr = {};
         return 0;
     }
 
@@ -102,7 +101,7 @@ namespace PeterDB {
         result = fread(data, PAGE_SIZE, 1, fileInMemory);
         if (result < 1) return -1;
         // update counter
-        hdr.readPageCounter = hdr.readPageCounter + 1;
+        readPageCounter = readPageCounter + 1;
         flushMetadata();
         return 0;
     }
@@ -123,28 +122,28 @@ namespace PeterDB {
             return -1;
         }
         // update counter
-        hdr.writePageCounter = hdr.writePageCounter + 1;
+        writePageCounter = writePageCounter + 1;
         flushMetadata();
         return 0;
     }
 
     RC FileHandle::appendPage(const void *data) {
-        fseek(fileInMemory, File_Header_Page_Size + PAGE_SIZE * hdr.pageCounter, SEEK_SET);
+        fseek(fileInMemory, File_Header_Page_Size + PAGE_SIZE * pageCounter, SEEK_SET);
         fwrite(data, PAGE_SIZE, 1, fileInMemory);
-        hdr.appendPageCounter = hdr.appendPageCounter + 1;
-        hdr.pageCounter = hdr.pageCounter + 1;
+        appendPageCounter = appendPageCounter + 1;
+        pageCounter = pageCounter + 1;
         flushMetadata();
         return 0;
     }
 
     unsigned FileHandle::getNumberOfPages() {
-        return this->hdr.pageCounter;
+        return pageCounter;
     }
 
     RC FileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount) {
-        readPageCount = hdr.readPageCounter;
-        writePageCount = hdr.writePageCounter;
-        appendPageCount = hdr.appendPageCounter;
+        readPageCount = readPageCounter;
+        writePageCount = writePageCounter;
+        appendPageCount = appendPageCounter;
         return 0;
     }
 
@@ -155,8 +154,9 @@ namespace PeterDB {
         clearerr(PeterDB::FileHandle::fileInMemory);
         fseek(fileInMemory, 0, SEEK_SET);
 
-        fwrite(&hdr, sizeof(hdr), 1, fileInMemory);
+        fwrite(&pageCounter, sizeof(unsigned),4, fileInMemory);
         fflush(fileInMemory);
+        fseek(fileInMemory, 0, SEEK_SET);
         return 0;
     }
 
@@ -164,7 +164,7 @@ namespace PeterDB {
         if (!fileIsOpen) return -1;
         fseek(fileInMemory, 0 ,SEEK_SET);
         clearerr(PeterDB::FileHandle::fileInMemory);
-        fread(&hdr, sizeof(hdr), 1, fileInMemory);
+        fread(&pageCounter, sizeof(unsigned), 4, fileInMemory);
         return 0;
     }
 

@@ -15,6 +15,7 @@ namespace PeterDB {
     RelationManager &RelationManager::operator=(const RelationManager &) = default;
 
     RC RelationManager::createCatalog() {
+        //create file for table
         return -1;
     }
 

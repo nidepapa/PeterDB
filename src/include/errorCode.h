@@ -8,6 +8,7 @@
 #include <cstdint>
 
 namespace PeterDB {
+    const int32_t SUCCESS = 0;
     const int32_t ERR_GENERAL = -1;
 
     // fh error
@@ -19,7 +20,9 @@ namespace PeterDB {
 
     // rbfm error
     const int32_t ERR_RBFILE_NOT_OPEN = 201;
-    const int32_t ERR_RBFILE_PAGE_NOT_ENOUGH = 202;
+    const int32_t ERR_RBFILE_PAGE_EXCEEDED = 202;
+    const int32_t ERR_RBFILE_SLOT_INVALID = 203;
+
 
 }
 

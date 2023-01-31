@@ -4,6 +4,7 @@
 #include <sstream>
 #include <cstring>
 #include "src/include/errorCode.h"
+#include <glog/logging.h>
 
 namespace PeterDB {
     RecordBasedFileManager &RecordBasedFileManager::instance() {
@@ -41,17 +42,17 @@ namespace PeterDB {
         // 1. check file state
         if (!fileHandle.isFileOpen()) return ERR_RBFILE_NOT_OPEN;
         // 2. convert raw data to byte sequence
-        RecordHelper rh = RecordHelper();
-        int8_t pageBuffer[PAGE_SIZE] = {};
+        uint8_t pageBuffer[PAGE_SIZE] = {};
         short recByteLen = 0;
 
-        rc = rh.rawDataToRecordByte((int8_t*) data, recordDescriptor, pageBuffer, recByteLen);
+        rc = RecordHelper::rawDataToRecordByte((uint8_t*) data, recordDescriptor, pageBuffer, recByteLen);
         if(rc) {
             std::cout << "Fail to Convert Record to Byte Seq @ RecordBasedFileManager::insertRecord" << std::endl;
             return rc;
         }
 
-        int8_t buffer[recByteLen];
+        uint8_t buffer[recByteLen];
+        memset(buffer, 0, recByteLen);
         memcpy(buffer, pageBuffer, recByteLen);
 
         // 3. find a page
@@ -60,7 +61,7 @@ namespace PeterDB {
         PageHelper thisPage(fileHandle, availablePageNum);
 
         // 4. insert binary data
-        thisPage.insertRecordInByte(buffer, recByteLen, rid);
+        thisPage.insertRecordInByte(buffer, recByteLen, rid, false);
         return 0;
     }
 
@@ -68,24 +69,69 @@ namespace PeterDB {
                                           const RID &rid, void *data) {
         // 1. check file state and page validity
         if (!fileHandle.isFileOpen()) return ERR_RBFILE_NOT_OPEN;
-        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return ERR_RBFILE_PAGE_NOT_ENOUGH;
+        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return ERR_RBFILE_PAGE_EXCEEDED;
 
-        // 2. get record in byte
-        PageHelper thisPage(fileHandle, rid.pageNum);
-        int8_t buffer[PAGE_SIZE] = {};
+        // 2. get real data RID
+        uint32_t curPageID = rid.pageNum;
+        uint16_t curSlotID = rid.slotNum;
+        while (curPageID < fileHandle.getNumberOfPages()){
+            PageHelper thisPage(fileHandle, curPageID);
+            if (!thisPage.isRecordValid(curSlotID)){
+                LOG(ERROR) << "Record is invalid! @ RecordBasedFileManager::readRecord" << std::endl;
+                return ERR_RBFILE_SLOT_INVALID;
+            }
+            if (thisPage.isRecordData(curSlotID)) break;
+            thisPage.getRecordPointer(curSlotID,curPageID,curSlotID);
+            if (curPageID >= fileHandle.getNumberOfPages()){
+                LOG(ERROR) << "Target Page not exist! @ RecordBasedFileManager::readRecord" << std::endl;
+                return ERR_RBFILE_PAGE_EXCEEDED;
+            }
+        }
+
+        // 3. get real data record in byte
+        PageHelper thisPage(fileHandle, curPageID);
+
+        uint8_t buffer[PAGE_SIZE] = {};
         short recByteLen = 0;
-        thisPage.getRecordInByte(rid.slotNum, buffer, recByteLen);
+        thisPage.getRecordByte(curSlotID, buffer, recByteLen);
 
-        // 3. convert binary to raw data
-        RecordHelper rh;
-        rh.recordByteToRawData(buffer, recByteLen, recordDescriptor, (int8_t *)data);
+        // 4. convert binary to raw data
+        RecordHelper::recordByteToRawData(buffer, recByteLen, recordDescriptor, (uint8_t *)data);
 
-        return 0;
+        return SUCCESS;
     }
 
     RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const RID &rid) {
-        return -1;
+        // 1. check file state and page validity
+        if (!fileHandle.isFileOpen()) return ERR_RBFILE_NOT_OPEN;
+        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return ERR_RBFILE_PAGE_EXCEEDED;
+
+        // 2. get real data RID
+        uint32_t curPageID = rid.pageNum;
+        uint16_t curSlotID = rid.slotNum;
+        while (curPageID < fileHandle.getNumberOfPages()){
+            PageHelper thisPage(fileHandle, curPageID);
+            if (!thisPage.isRecordValid(curSlotID)){
+                LOG(ERROR) << "Record is invalid! @ RecordBasedFileManager::readRecord" << std::endl;
+                return ERR_RBFILE_SLOT_INVALID;
+            }
+            if (thisPage.isRecordData(curSlotID)) break;
+
+            uint16_t oldSlotID = curSlotID;
+            thisPage.getRecordPointer(curSlotID,curPageID,curSlotID);
+            // delete all pointer on the way
+            thisPage.deleteRecord(oldSlotID);
+            if (curPageID >= fileHandle.getNumberOfPages()){
+                LOG(ERROR) << "Target Page not exist! @ RecordBasedFileManager::deleteRecord" << std::endl;
+                return ERR_RBFILE_PAGE_EXCEEDED;
+            }
+
+        }
+        // 2. get real data record
+        PageHelper thisPage(fileHandle, curPageID);
+        thisPage.deleteRecord(curSlotID);
+        return 0;
     }
 
     RC RecordBasedFileManager::printRecord(const std::vector<Attribute> &recordDescriptor, const void *data,
@@ -99,7 +145,7 @@ namespace PeterDB {
             // start
             out << recordDescriptor[i].name << ":" << separator;
             // value
-            if(rh.isNullAttr((int8_t*)data, i)) {
+            if(rh.isNullAttr((uint8_t*)data, i)) {
                 out << "NULL";
             }else{
                 switch (recordDescriptor[i].type) {
@@ -143,11 +189,69 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, const RID &rid) {
-        return -1;
+
+
+        // 1. check file state and page validity
+        if (!fileHandle.isFileOpen()) return ERR_RBFILE_NOT_OPEN;
+        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return ERR_RBFILE_PAGE_EXCEEDED;
+        // 2. get real data RID
+        uint32_t curPageID = rid.pageNum;
+        uint16_t curSlotID = rid.slotNum;
+        bool setUnoriginal = false;
+        while (curPageID < fileHandle.getNumberOfPages()){
+            PageHelper thisPage(fileHandle, curPageID);
+            if (!thisPage.isRecordValid(curSlotID)){
+                LOG(ERROR) << "Record is invalid! @ RecordBasedFileManager::readRecord" << std::endl;
+                return ERR_RBFILE_SLOT_INVALID;
+            }
+            if (thisPage.isRecordData(curSlotID)) break;
+            // data get pointed to is not original record
+            setUnoriginal = true;
+            thisPage.getRecordPointer(curSlotID,curPageID,curSlotID);
+            if (curPageID >= fileHandle.getNumberOfPages()){
+                LOG(ERROR) << "Target Page not exist! @ RecordBasedFileManager::readRecord" << std::endl;
+                return ERR_RBFILE_PAGE_EXCEEDED;
+            }
+        }
+
+        // 3. convert raw data to byte sequence
+        uint8_t pageBuffer[PAGE_SIZE] = {};
+        short recByteLen = 0;
+
+        RC rc = RecordHelper::rawDataToRecordByte((uint8_t*) data, recordDescriptor, pageBuffer, recByteLen);
+        if(rc) {
+            std::cout << "Fail to Convert Record to Byte Seq @ RecordBasedFileManager::updateRecord" << std::endl;
+            return rc;
+        }
+
+        uint8_t buffer[recByteLen];
+        memset(buffer, 0, recByteLen);
+        memcpy(buffer, pageBuffer, recByteLen);
+
+        // find new space for new record
+        PageNum newPage;
+        PageHelper thisPage(fileHandle, curPageID);
+        int16_t oldRecLen = thisPage.getRecordLen(curSlotID);
+
+        if (oldRecLen >= recByteLen || (oldRecLen < recByteLen &&  thisPage.IsFreeSpaceEnough(recByteLen - oldRecLen))){
+            // store in current page
+            thisPage.updateRecord(curSlotID, buffer, recByteLen, setUnoriginal);
+        }else{
+            // store in some other available page
+            RID newRecordRID;
+            getAvailablePage(fileHandle, recByteLen, newPage);
+            PageHelper nextPage(fileHandle, newPage);
+            // this data must be pointed to , so set it to unoriginal
+            nextPage.insertRecordInByte(buffer, recByteLen, newRecordRID, true);
+
+            thisPage.setRecordPointToNewRID(curSlotID, newRecordRID, setUnoriginal);
+        }
+        return SUCCESS;
     }
 
     RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                              const RID &rid, const std::string &attributeName, void *data) {
+
         return -1;
     }
 
@@ -160,30 +264,27 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::getAvailablePage(FileHandle& fileHandle, short recLength, PageNum& availablePageNum){
         unsigned pageCount = fileHandle.getNumberOfPages();
-        char data[PAGE_SIZE] = {};
-        // no pages add a new page
-        if (pageCount == 0){
-            fileHandle.appendPage(data);
-            availablePageNum = fileHandle.getNumberOfPages() - 1;
-            return 0;
-        }
-
-        // check if last page is available
-        PageNum lastPageNum = fileHandle.getNumberOfPages() - 1;
-        PageHelper lastPage(fileHandle, lastPageNum);
-        if (lastPage.IsFreeSpaceEnough(recLength)){
-            availablePageNum = lastPageNum;
-            return 0;
-        }
-
-        // traverse all pages from beginning
-        for (PageNum i = 0 ; i <= lastPageNum; i++){
-            PageHelper ithPage(fileHandle, i);
-            if (ithPage.IsFreeSpaceEnough(recLength)){
-                availablePageNum = i;
+        uint8_t data[PAGE_SIZE] = {};
+        // we have pages
+        if (pageCount > 0){
+            // check if last page is available
+            PageNum lastPageNum = pageCount - 1;
+            PageHelper lastPage(fileHandle, lastPageNum);
+            if (lastPage.IsFreeSpaceEnough(recLength)){
+                availablePageNum = lastPageNum;
                 return 0;
             }
+
+            // traverse all pages from beginning
+            for (PageNum i = 0 ; i < lastPageNum; i++){
+                PageHelper ithPage(fileHandle, i);
+                if (ithPage.IsFreeSpaceEnough(recLength)){
+                    availablePageNum = i;
+                    return 0;
+                }
+            }
         }
+
         // no available page, append a new page
         fileHandle.appendPage(data);
         availablePageNum = fileHandle.getNumberOfPages() - 1;

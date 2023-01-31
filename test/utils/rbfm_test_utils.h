@@ -212,7 +212,10 @@ namespace PeterDBTesting {
                                         << "Reading a record should success.";
 
             // Compare whether the two memory blocks are the same
-            ASSERT_EQ(memcmp(inBuffer, outBuffer, recordSize), 0) << "Returned Data should be the same";
+            uint8_t out[recordSize];
+            memset(out, 0, recordSize);
+            memcpy(out, outBuffer,recordSize);
+            ASSERT_EQ(memcmp(inBuffer, outBuffer, recordSize), 0) << "Returned Data should be the same" << " size:" << recordSize << " out:" << out;
         }
 
         void insertRecord(const std::vector<PeterDB::Attribute> &recordDescriptor, PeterDB::RID &rid,

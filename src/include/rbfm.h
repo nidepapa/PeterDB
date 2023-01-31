@@ -59,7 +59,7 @@ namespace PeterDB {
     typedef uint8_t Flag;
     typedef uint8_t PlaceHolder;
     typedef uint16_t AttrNum;
-    typedef uint16_t AttrDir;
+    typedef int16_t AttrDir;
 
     // type for page
     typedef uint16_t FreeBytePointer;
@@ -71,6 +71,14 @@ namespace PeterDB {
     const Flag RECORD_FLAG_DATA = 0;
     const Flag RECORD_FLAG_POINTER = 1;
     const PlaceHolder RECORD_PLACEHOLDER = 0;
+
+    const SlotOffset SLOT_OFFSET_EMPTY = -1;
+    const SlotLen SLOT_LEN_EMPTY = 0;
+
+    const int8_t SHIFT_LEFT = 1;
+    const int8_t SHIFT_RIGHT = 2;
+
+    const AttrDir ATTR_DIR_EMPTY = -1;
 
 
 
@@ -120,7 +128,8 @@ namespace PeterDB {
                         RID &rid);
 
         // Read a record identified by the given rid.
-        RC readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data);
+        RC
+        readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data);
 
         // Print the record that is passed to this utility method.
         // This method will be mainly used for debugging/testing.
@@ -130,12 +139,12 @@ namespace PeterDB {
         //        age: NULL  height: 7.5  salary: 7500)
         RC printRecord(const std::vector<Attribute> &recordDescriptor, const void *data, std::ostream &out);
 
-        RC getAvailablePage(FileHandle& fileHandle, int16_t recLength, PageNum& availablePageNum);
+        RC getAvailablePage(FileHandle &fileHandle, int16_t recLength, PageNum &availablePageNum);
 
-            /*****************************************************************************************************
-            * IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) *
-            * are NOT required to be implemented for Project 1                                                   *
-            *****************************************************************************************************/
+        /*****************************************************************************************************
+        * IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) *
+        * are NOT required to be implemented for Project 1                                                   *
+        *****************************************************************************************************/
         // Delete a record identified by the given rid.
         RC deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid);
 
@@ -163,44 +172,106 @@ namespace PeterDB {
         RecordBasedFileManager &operator=(const RecordBasedFileManager &);          // Prevent assignment
 
     };
+
     //slot n|...|slot 1|N|F
     class PageHelper {
     public:
-        FileHandle& fh;
+        FileHandle &fh;
         PageNum pageNum;
         FreeBytePointer freeBytePointer;
         SlotCounter slotCounter;
         //page data
-        int8_t dataSeq[PAGE_SIZE] = {};
+        uint8_t dataSeq[PAGE_SIZE] = {};
 
         bool IsFreeSpaceEnough(int32_t recLength);
 
-        RC insertRecordInByte(int8_t byteSeq[], int16_t recLength, RID& rid);
-        RC getRecordInByte(int16_t slotNum, int8_t* recordByteSeq, int16_t& recLength);
+        // insert record Data
+        RC insertRecordInByte(uint8_t byteSeq[], int16_t recLength, RID &rid, bool setUnoriginal);
+        // read record Data
+        RC getRecordByte(int16_t slotIndex, uint8_t *byteSeq, int16_t &recLength);
+        // read record Pointer
+        RC getRecordPointer(int16_t slotIndex, uint32_t &ridPageNum, uint16_t &ridSlotNum);
+        // delete a record
+        RC deleteRecord(uint16_t slotIndex);
+        // update record Data
+        RC updateRecord(int16_t slotIndex, uint8_t byteSeq[], int16_t recLength, bool setUnoriginal);
+        // update a record to a RID
+        RC setRecordPointToNewRID(int16_t curSlotIndex, const RID &newRecordRID, bool setUnoriginal);
 
-        PageHelper(FileHandle& fileHandle, PageNum pageNum);
+        RC getRecordAttr(int16_t slotIndex, int16_t attrIdx, uint8_t *attrVal);
+
+        bool isRecordPointer(int16_t slotIndex);
+
+        bool isRecordData(int16_t slotIndex);
+
+        bool isRecordDeleted(int16_t slotIndex);
+
+        bool isRecordValid(int16_t slotIndex);
+        // to indicate if a record is original one;
+        bool isOriginal(int16_t slotIndex);
+
+        PageHelper(FileHandle &fileHandle, PageNum pageNum);
+
         ~PageHelper();
 
+        int16_t getRecordLen(int16_t slotIndex);
+
     private:
+        //getter
         int16_t getFlagsLength();
         int16_t getSlotSize();
         int16_t getHeaderLength();
         int16_t getSlotCounterOffset();
         int16_t getFreeBytePointerOffset();
         int16_t getSlotOffset(int16_t slotNum); // start from 1
+        // get the present available slot offset and it might change slotCounter
+        int16_t getAvlSlotOffsetIdx(); // todo test
+        int16_t getRecordBeginPos(int16_t slotIndex);
+        int8_t getRecordFlag(int16_t slotIndex);
+        int16_t getAttrBeginPos(int16_t slotIndex, int16_t attrIndex);
+        int16_t getAttrEndPos(int16_t slotIndex, int16_t attrIndex);
+
+        // setter
+        void setRecordFlag(int16_t slotIndex, Flag fg);
+        void setRecordOffset(int16_t slotIndex, SlotOffset so);
+        void setRecordLen(int16_t slotIndex, SlotLen sl, bool setUnoriginalSign);
+        void setFreeBytePointer(FreeBytePointer);
+        void setSlotCounter(SlotCounter sc);
+        // checker
+        bool isAttrNull(int16_t slotIndex, int16_t attrIndex);
+
+        RC shiftRecord(int16_t dataStartPos, int16_t distance, int8_t direction);
+
+        int8_t getRecordAttrNum(int16_t slotIndex);
+
+        int16_t getAttrLen(int16_t slotIndex, int16_t attrIndex);
+
     };
 
     class RecordHelper {
     public:
-        RC rawDataToRecordByte(int8_t* rawData, const std::vector<Attribute> &attrs, int8_t* byteSeq, int16_t & recordLen);
-        RC recordByteToRawData(int8_t record[], const int16_t recordLen, const std::vector<Attribute> &recordDescriptor, int8_t* data);
+        static RC
+        rawDataToRecordByte(uint8_t *rawData, const std::vector<Attribute> &attrs, uint8_t *byteSeq, int16_t &recordLen);
 
-        bool isNullAttr(int8_t* rawData, int16_t idx);
+        static RC
+        recordByteToRawData(uint8_t record[], const int16_t recordLen, const std::vector<Attribute> &recordDescriptor,
+                            uint8_t *data);
+
+        static bool isNullAttr(uint8_t *rawData, int16_t idx);
+
+        static int16_t getAttrBeginPos(uint8_t* byteSeq, int16_t attrIndex);
+
+        static int16_t getAttrEndPos(uint8_t* byteSeq, int16_t attrIndex);
+
+        static int16_t getRecordAttrNum(uint8_t* byteSeq);
+
+
         RecordHelper();
+
         ~RecordHelper();
 
-        RC printNullAttr(char *recordByte, const std::vector<Attribute> &recordDescriptor);
-        RC getNullFlag(int8_t* recordByte, const std::vector<Attribute> &recordDescriptor, int8_t *nullFlag);
+        //RC printNullAttr(char *recordByte, const std::vector<Attribute> &recordDescriptor);
+        static RC getNullFlag(uint8_t *recordByte, const std::vector<Attribute> &recordDescriptor, int8_t *nullFlag);
 
     };
 } // namespace PeterDB

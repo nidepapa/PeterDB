@@ -3,6 +3,7 @@
 //
 #include <cmath>
 #include "src/include/rbfm.h"
+#include "src/include/errorCode.h"
 #include <iostream>
 #include <iterator>
 #include <cstring>
@@ -15,8 +16,7 @@ namespace PeterDB {
     // ("Tom", 25, "UCIrvine", 3.1415, 100)
     // [1 byte for the null-indicators for the fields: bit 00000000] [4 bytes for the length 3] [3 bytes for the string "Tom"] [4 bytes for the integer value 25] [4 bytes for the length 8] [8 bytes for the string "UCIrvine"] [4 bytes for the float value 3.1415] [4 bytes for the integer value 100]
     // covert a raw data to a byte sequence with metadata as header
-    RC
-    RecordHelper::rawDataToRecordByte(int8_t *rawData, const std::vector<Attribute> &recordDescriptor, int8_t *recordByte,
+    RC RecordHelper::rawDataToRecordByte(uint8_t *rawData, const std::vector<Attribute> &recordDescriptor, uint8_t *recordByte,
                                       int16_t &recordLen) {
 
         // 1. write flag and placeholder
@@ -71,118 +71,110 @@ namespace PeterDB {
     }
 
     // convert byte(with metadata) into a struct data according to the recordDescriptor
-    RC RecordHelper::recordByteToRawData(int8_t *recordByte, const int16_t recordLen,
-                                         const std::vector<Attribute> &recordDescriptor, int8_t *rawData) {
+    RC RecordHelper::recordByteToRawData(uint8_t *recordByte, const int16_t recordLen,
+                                         const std::vector<Attribute> &recordDescriptor, uint8_t *rawData) {
         int16_t attrNum = recordDescriptor.size();
         // 1. get null flags
         int16_t nullFlagLenInByte = ceil(attrNum / 8.0);
         int8_t nullFlag[nullFlagLenInByte];
+        memset(nullFlag, 0, nullFlagLenInByte);
         getNullFlag(recordByte, recordDescriptor, nullFlag);
         memcpy(rawData, nullFlag, nullFlagLenInByte);
 
         // 2. write into not null value
         short rawDataPos = sizeof(char) * nullFlagLenInByte;
         short attrDirectoryPos = sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum);
-        short valPos = attrDirectoryPos + attrNum * sizeof(AttrDir);
-        short prev = valPos, curr = 0;
 
         for (short i = 0; i < attrNum; i++, attrDirectoryPos += sizeof(AttrDir)) {
             if (!isNullAttr(rawData, i)) {
-                memcpy(&curr, recordByte + attrDirectoryPos, sizeof(AttrDir));
+                int16_t attrEndPos = getAttrEndPos(recordByte, i);
+                int16_t attrBeginPos = getAttrBeginPos(recordByte, i);
 
                 switch (recordDescriptor[i].type) {
                     case TypeInt:
-                        memcpy(rawData + rawDataPos, recordByte + valPos, sizeof(int));
-                        valPos += sizeof(int);
-                        rawDataPos += sizeof(int);
+                        memcpy(rawData + rawDataPos, recordByte + attrBeginPos, sizeof(TypeInt));
+                        rawDataPos += sizeof(TypeInt);
                         break;
                     case TypeReal:
-                        memcpy(rawData + rawDataPos, recordByte + valPos, sizeof(float));
-                        valPos += sizeof(float);
-                        rawDataPos += sizeof(float);
+                        memcpy(rawData + rawDataPos, recordByte + attrBeginPos, sizeof(TypeReal));
+                        rawDataPos += sizeof(TypeReal);
                         break;
                     case TypeVarChar:
                         // 1. write varchar length
                         RawDataStrLen strLen;
-                        strLen = curr - prev;
+                        strLen = attrEndPos - attrBeginPos;
                         memcpy(rawData + rawDataPos, &strLen, sizeof(RawDataStrLen));
 
                         rawDataPos += sizeof(RawDataStrLen);
                         // 2. write varchar
-                        memcpy(rawData + rawDataPos, recordByte + valPos, strLen);
-                        valPos += strLen;
+                        memcpy(rawData + rawDataPos, recordByte + attrBeginPos, strLen);
                         rawDataPos += strLen;
                         break;
                 }
             }
-
-            if (curr >= 0) {
-                // update previous ending
-                prev = curr;
-            }
         }
         return 0;
     }
 
-    RC RecordHelper::printNullAttr(char *recordByte, const std::vector<Attribute> &recordDescriptor) {
-        char AttrNum[2];
+//    RC RecordHelper::printNullAttr(char *recordByte, const std::vector<Attribute> &recordDescriptor) {
+//        char AttrNum[2];
+//
+//        short attrNum = recordDescriptor.size();
+//
+//        // 1. write into not null value
+//        short attrDirectoryPos = sizeof(short);
+//        short valPos = attrDirectoryPos + attrNum * sizeof(short);
+//        short prev = valPos, curr = 0;
+//
+//        for (short i = 0; i < attrNum; i++, attrDirectoryPos += sizeof(short)) {
+//            memcpy(&curr, recordByte + attrDirectoryPos, sizeof(short));
+//            if (curr > 0) {
+//                // is not null
+//                memcpy(&curr, recordByte + attrDirectoryPos, sizeof(short));
+//                attrDirectoryPos += sizeof(short);
+//                std::cout << " prev: " << prev << std::endl;
+//                std::cout << " curr: " << curr << std::endl;
+//                switch (recordDescriptor[i].type) {
+//                    case TypeInt:
+//                        char val1[4];
+//                        memcpy(val1, recordByte + valPos, sizeof(int));
+//                        valPos += sizeof(int);
+//                        std::cout << "@ recordByte:" << recordDescriptor[i].name << ": " << *((int *) val1)
+//                                  << std::endl;
+//                        break;
+//                    case TypeReal:
+//                        char val2[4];
+//                        memcpy(val2, recordByte + valPos, sizeof(float));
+//                        valPos += sizeof(float);
+//                        std::cout << "@ recordByte:" << recordDescriptor[i].name << ": " << *((float *) val2)
+//                                  << std::endl;
+//                        break;
+//                    case TypeVarChar:
+//                        // 1. write varchar length
+//                        int strLen;
+//                        strLen = curr - prev;
+//                        char val3[strLen];
+//                        // 2. write varchar
+//                        memcpy(val3, recordByte + valPos, strLen);
+//                        valPos += strLen;
+//                        std::cout << "@ recordByte:" << recordDescriptor[i].name << ": ";
+//                        std::copy(val3, val3 + strLen,
+//                                  std::ostream_iterator<char>(std::cout, ""));
+//                        std::cout << " length: " << strLen << std::endl;
+//                        break;
+//                }
+//
+//            }
+//            if (curr >= 0) {
+//                prev = curr;
+//            }
+//        }
+//        return 0;
+//
+//
+//    }
 
-        short attrNum = recordDescriptor.size();
-
-        // 1. write into not null value
-        short attrDirectoryPos = sizeof(short);
-        short valPos = attrDirectoryPos + attrNum * sizeof(short);
-        short prev = valPos, curr = 0;
-
-        for (short i = 0; i < attrNum; i++, attrDirectoryPos += sizeof(short)) {
-            memcpy(&curr, recordByte + attrDirectoryPos, sizeof(short));
-            if (curr > 0) {
-                // is not null
-                memcpy(&curr, recordByte + attrDirectoryPos, sizeof(short));
-                attrDirectoryPos += sizeof(short);
-                std::cout << " prev: " << prev << std::endl;
-                std::cout << " curr: " << curr << std::endl;
-                switch (recordDescriptor[i].type) {
-                    case TypeInt:
-                        char val1[4];
-                        memcpy(val1, recordByte + valPos, sizeof(int));
-                        valPos += sizeof(int);
-                        std::cout << "@ recordByte:" << recordDescriptor[i].name << ": " << *((int *) val1)
-                                  << std::endl;
-                        break;
-                    case TypeReal:
-                        char val2[4];
-                        memcpy(val2, recordByte + valPos, sizeof(float));
-                        valPos += sizeof(float);
-                        std::cout << "@ recordByte:" << recordDescriptor[i].name << ": " << *((float *) val2)
-                                  << std::endl;
-                        break;
-                    case TypeVarChar:
-                        // 1. write varchar length
-                        int strLen;
-                        strLen = curr - prev;
-                        char val3[strLen];
-                        // 2. write varchar
-                        memcpy(val3, recordByte + valPos, strLen);
-                        valPos += strLen;
-                        std::cout << "@ recordByte:" << recordDescriptor[i].name << ": ";
-                        std::copy(val3, val3 + strLen,
-                                  std::ostream_iterator<char>(std::cout, ""));
-                        std::cout << " length: " << strLen << std::endl;
-                        break;
-                }
-
-            }
-            if (curr >= 0) {
-                prev = curr;
-            }
-        }
-        return 0;
-
-
-    }
-
-    bool RecordHelper::isNullAttr(int8_t *rawData, int16_t idx) {
+     bool RecordHelper::isNullAttr(uint8_t *rawData, int16_t idx) {
         short byteNumber = idx / 8;
         short bitNumber = idx % 8;
         uint8_t mask = 0x01;
@@ -191,7 +183,7 @@ namespace PeterDB {
         return (tmp >> (7 - bitNumber)) & mask;
     }
 
-    RC RecordHelper::getNullFlag(int8_t *recordByte, const std::vector<Attribute> &recordDescriptor, int8_t *nullFlag) {
+    RC RecordHelper::getNullFlag(uint8_t *recordByte, const std::vector<Attribute> &recordDescriptor, int8_t *nullFlag) {
         int16_t AttrNum = recordDescriptor.size();
         // init to 0 explicitly, or will be set random value in c++
         for (int i = 0; i < sizeof(nullFlag); i++) {
@@ -200,7 +192,7 @@ namespace PeterDB {
         for (int i = 0; i < AttrNum; i++) {
             short valPos = 0;
             memcpy(&valPos, recordByte + sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum) + sizeof(AttrDir) * i, sizeof(AttrDir));
-            if (valPos < 0) {
+            if (valPos == ATTR_DIR_EMPTY) {
                 // is null
                 int16_t bytePos = i / 8;
                 int16_t bitPos = i % 8;
@@ -208,6 +200,38 @@ namespace PeterDB {
             }
         }
         return 0;
+    }
+
+    int16_t RecordHelper::getAttrBeginPos(uint8_t* byteSeq, int16_t attrIndex) {
+        int16_t curOffset = getAttrEndPos(byteSeq, attrIndex);
+        if(curOffset == ATTR_DIR_EMPTY) {   // Null attribute
+            return ERR_GENERAL;
+        }
+        int16_t prevOffset = -1;
+        // Looking for previous attribute that is not null
+        for(int i = attrIndex - 1; i >= 0; i--) {
+            prevOffset = getAttrEndPos(byteSeq, i);
+            if(prevOffset != ATTR_DIR_EMPTY) {
+                break;
+            }
+        }
+        if(prevOffset == -1) {
+            prevOffset = sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum) + getRecordAttrNum(byteSeq) * sizeof(AttrDir);
+        }
+        return prevOffset;
+    }
+
+    int16_t RecordHelper::getAttrEndPos(uint8_t* byteSeq, int16_t attrIndex) {
+        int16_t dirOffset = sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum) + attrIndex * sizeof(AttrDir);
+        int16_t attrEndPos;
+        memcpy(&attrEndPos, byteSeq + dirOffset, sizeof(AttrDir));
+        return attrEndPos;
+    }
+
+    int16_t RecordHelper::getRecordAttrNum(uint8_t* byteSeq){
+        int16_t attrNum;
+        memcpy(&attrNum, byteSeq + sizeof(Flag) + sizeof(PlaceHolder), sizeof(AttrNum));
+        return attrNum;
     }
 
 }

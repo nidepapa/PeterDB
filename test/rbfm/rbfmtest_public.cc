@@ -373,7 +373,7 @@ namespace PeterDBTesting {
 
         // Insert long record
         insertRecord(recordDescriptor, rid, longStr);
-
+//todo fine till here
         // update short record
         updateRecord(recordDescriptor, shortRID, midString);
 

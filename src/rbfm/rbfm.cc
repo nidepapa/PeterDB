@@ -67,6 +67,27 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                           const RID &rid, void *data) {
+
+        uint8_t buffer[PAGE_SIZE] = {};
+        short recByteLen = 0;
+        readInternalRecord(fileHandle, recordDescriptor, rid, buffer, recByteLen);
+
+        if (recByteLen == 0){
+            LOG(WARNING)<< "record does not exist @RecordBasedFileManager::readRecord" << std::endl;
+            return ERR_GENERAL;
+        }
+        // convert binary to raw data
+        std::vector<uint16_t> selectedAttrIndex(recordDescriptor.size());
+        for(uint16_t i = 0; i < recordDescriptor.size(); i++) {
+            selectedAttrIndex[i] = i;
+        }
+        RecordHelper::recordByteToRawData(buffer, recordDescriptor,selectedAttrIndex, (uint8_t *)data);
+
+        return SUCCESS;
+    }
+
+    RC RecordBasedFileManager::readInternalRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
+                          const RID &rid, void *data, short & recByteLen){
         // 1. check file state and page validity
         if (!fileHandle.isFileOpen()) return ERR_RBFILE_NOT_OPEN;
         if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return ERR_RBFILE_PAGE_EXCEEDED;
@@ -90,13 +111,7 @@ namespace PeterDB {
 
         // 3. get real data record in byte
         PageHelper thisPage(fileHandle, curPageID);
-
-        uint8_t buffer[PAGE_SIZE] = {};
-        short recByteLen = 0;
-        thisPage.getRecordByte(curSlotID, buffer, recByteLen);
-
-        // 4. convert binary to raw data
-        RecordHelper::recordByteToRawData(buffer, recByteLen, recordDescriptor, (uint8_t *)data);
+        thisPage.getRecordByte(curSlotID, (uint8_t *)data, recByteLen);
 
         return SUCCESS;
     }
@@ -145,7 +160,7 @@ namespace PeterDB {
             // start
             out << recordDescriptor[i].name << ":" << separator;
             // value
-            if(rh.isNullAttr((uint8_t*)data, i)) {
+            if(rh.rawDataIsNullAttr((uint8_t*)data, i)) {
                 out << "NULL";
             }else{
                 switch (recordDescriptor[i].type) {
@@ -251,15 +266,50 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                              const RID &rid, const std::string &attributeName, void *data) {
+        // 1. check file state and page validity
+        if (!fileHandle.isFileOpen()) return ERR_RBFILE_NOT_OPEN;
+        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return ERR_RBFILE_PAGE_EXCEEDED;
 
-        return -1;
+        // 2. get the  whole record data
+        uint8_t record[PAGE_SIZE];
+        short recLen = 0;
+        readInternalRecord(fileHandle, recordDescriptor, rid, record, recLen);
+
+        // 3. get the attribute
+        int16_t attrIndex = ATTR_IDX_INVALID;
+        int16_t attrLen = 0;
+        int16_t readAttrLen;
+        for (int i = 0; i < recordDescriptor.size(); i ++){
+            if (recordDescriptor[i].name == attributeName){
+                attrIndex = i;
+                attrLen = recordDescriptor[i].length;
+                break;
+            }
+        }
+        if (attrIndex == ATTR_IDX_INVALID){
+            LOG(ERROR) << "Attribute Index Err @ RecordBasedFileManager::readAttribute" << std::endl;
+            return ERR_GENERAL;
+        }
+        RecordHelper::recordGetAttr(record, attrIndex, (uint8_t *)data, readAttrLen);
+        if (readAttrLen != attrLen){
+            LOG(ERROR) << " Read record attribute Err @ RecordBasedFileManager::readAttribute" << std::endl;
+            return ERR_GENERAL;
+        }
+
+
+        return SUCCESS;
     }
 
     RC RecordBasedFileManager::scan(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                     const std::string &conditionAttribute, const CompOp compOp, const void *value,
                                     const std::vector<std::string> &attributeNames,
                                     RBFM_ScanIterator &rbfm_ScanIterator) {
-        return -1;
+        RC rc;
+        rc = rbfm_ScanIterator.begin(fileHandle, recordDescriptor, conditionAttribute, compOp, value, attributeNames);
+        if (rc){
+            LOG(ERROR) << "rbfm_ScanIterator.begin Err @ RecordBasedFileManager::scan" << std::endl;
+        }
+        return SUCCESS;
     }
 
     RC RecordBasedFileManager::getAvailablePage(FileHandle& fileHandle, short recLength, PageNum& availablePageNum){

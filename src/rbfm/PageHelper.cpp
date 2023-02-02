@@ -300,6 +300,45 @@ namespace PeterDB {
         memcpy(dataSeq + getSlotCounterOffset(), &sc, sizeof(SlotCounter));
     }
 
+    RC PageHelper::getNextRecordData(int16_t & slotIndex, uint8_t *byteSeq, int16_t & recordLen){
+        RC rc;
+        slotIndex++;
+        if (slotIndex > slotCounter){
+            LOG(ERROR) << "Record offset exceeded! @ PageHelper::getNextRecordData" << std::endl;
+            return ERR_RBFILE_SLOT_EXCEEDED;
+        }
+        if (!isRecordDeleted(slotIndex)){
+            LOG(ERROR) << "Record is deleted! @ PageHelper::getNextRecordData" << std::endl;
+            return ERR_GENERAL;
+        }
+        if (!isOriginal(slotIndex)){
+            LOG(ERROR) << "Record is not original! @ PageHelper::getNextRecordData" << std::endl;
+            return ERR_RBFILE_REC_UNORIGINAL;
+        }
+
+        uint16_t realDataSlotId = slotIndex;
+        uint32_t realDataPageId = pageNum;
+
+        while (realDataPageId < fh.getNumberOfPages()){
+            PageHelper realDataPage(fh, realDataPageId);
+            if (realDataPage.isRecordData(realDataSlotId))break;
+            realDataPage.getRecordPointer(realDataSlotId, realDataPageId, realDataSlotId);
+        }
+
+        if (realDataPageId >= fh.getNumberOfPages()){
+            LOG(ERROR) << "Record is not original! @ PageHelper::getNextRecordData" << std::endl;
+            return ERR_RBFILE_PAGE_EXCEEDED;
+        }
+        PageHelper realDataPage(fh, realDataPageId);
+        rc = realDataPage.getRecordByte(realDataSlotId, byteSeq, recordLen);
+        if (rc){
+            LOG(ERROR) << "getRecordByte Err! @ PageHelper::getNextRecordData" << std::endl;
+            return ERR_GENERAL;
+        }
+
+        return SUCCESS;
+    }
+
     // must call isRecordValid before the following 6 functions!!!
     bool PageHelper::isRecordPointer(int16_t slotIndex) {
         if (!isRecordValid(slotIndex)) {

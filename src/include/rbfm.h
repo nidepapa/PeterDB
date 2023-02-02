@@ -80,20 +80,53 @@ namespace PeterDB {
 
     const AttrDir ATTR_DIR_EMPTY = -1;
 
+    const int32_t CONDITION_ATTR_IDX_INVALID = -1;
+    const int32_t ATTR_IDX_INVALID = -1;
 
 
     class RBFM_ScanIterator {
+    private:
+        // init local data
+        FileHandle fileHandle;
+        std::vector<Attribute> recordDescriptor;
+        std::vector<std::uint16_t> selectedAttrIdx;
+
+        // current pointer
+        int32_t curPageNum;
+        int16_t curSlotNum;
+
+        // select condition
+        CompOp compOp;
+        Attribute conditionAttr;
+        // to store which element in recordDescriptor is a condition
+        int32_t conditionAttrIdx;
+        uint8_t *conditionVal;
+        RawDataStrLen conditionStrLen;
+
+        uint8_t recordData[PAGE_SIZE];
+
+        bool compareInt(int a, int b);
+        bool compareFloat(float a, float b);
+        bool compareStr(std::string a, std::string b);
+
     public:
         RBFM_ScanIterator() = default;;
 
         ~RBFM_ScanIterator() = default;;
 
+        RC begin(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
+                 const std::string &conditionAttribute, const CompOp compOp, const void *value,
+                 const std::vector<std::string> &selectedAttrNames);
+
         // Never keep the results in the memory. When getNextRecord() is called,
         // a satisfying record needs to be fetched from the file.
         // "data" follows the same format as RecordBasedFileManager::insertRecord().
-        RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
+        RC getNextRecord(RID &rid, void *data);
 
-        RC close() { return -1; };
+        // use this method to check if the attribute of current record meet the conditions
+        bool recordMeetCondition(uint8_t *attr, int16_t attrLen);
+
+        RC close() { return 0; };
     };
 
     class RecordBasedFileManager {
@@ -130,6 +163,9 @@ namespace PeterDB {
         // Read a record identified by the given rid.
         RC
         readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data);
+        // read a record in internal format
+        RC readInternalRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
+                                              const RID &rid, void *data, short & recByteLen);
 
         // Print the record that is passed to this utility method.
         // This method will be mainly used for debugging/testing.
@@ -187,14 +223,19 @@ namespace PeterDB {
 
         // insert record Data
         RC insertRecordInByte(uint8_t byteSeq[], int16_t recLength, RID &rid, bool setUnoriginal);
+
         // read record Data
         RC getRecordByte(int16_t slotIndex, uint8_t *byteSeq, int16_t &recLength);
+
         // read record Pointer
         RC getRecordPointer(int16_t slotIndex, uint32_t &ridPageNum, uint16_t &ridSlotNum);
+
         // delete a record
         RC deleteRecord(uint16_t slotIndex);
+
         // update record Data
         RC updateRecord(int16_t slotIndex, uint8_t byteSeq[], int16_t recLength, bool setUnoriginal);
+
         // update a record to a RID
         RC setRecordPointToNewRID(int16_t curSlotIndex, const RID &newRecordRID, bool setUnoriginal);
 
@@ -207,6 +248,7 @@ namespace PeterDB {
         bool isRecordDeleted(int16_t slotIndex);
 
         bool isRecordValid(int16_t slotIndex);
+
         // to indicate if a record is original one;
         bool isOriginal(int16_t slotIndex);
 
@@ -216,27 +258,43 @@ namespace PeterDB {
 
         int16_t getRecordLen(int16_t slotIndex);
 
+        // get next original record with real data, this function will cause slotIndex increase by 1 !!
+        RC getNextRecordData(int16_t &slotIndex, uint8_t *byteSeq, int16_t &recordLen);
+
     private:
         //getter
         int16_t getFlagsLength();
+
         int16_t getSlotSize();
+
         int16_t getHeaderLength();
+
         int16_t getSlotCounterOffset();
+
         int16_t getFreeBytePointerOffset();
+
         int16_t getSlotOffset(int16_t slotNum); // start from 1
         // get the present available slot offset and it might change slotCounter
         int16_t getAvlSlotOffsetIdx(); // todo test
         int16_t getRecordBeginPos(int16_t slotIndex);
+
         int8_t getRecordFlag(int16_t slotIndex);
+
         int16_t getAttrBeginPos(int16_t slotIndex, int16_t attrIndex);
+
         int16_t getAttrEndPos(int16_t slotIndex, int16_t attrIndex);
 
         // setter
         void setRecordFlag(int16_t slotIndex, Flag fg);
+
         void setRecordOffset(int16_t slotIndex, SlotOffset so);
+
         void setRecordLen(int16_t slotIndex, SlotLen sl, bool setUnoriginalSign);
+
         void setFreeBytePointer(FreeBytePointer);
+
         void setSlotCounter(SlotCounter sc);
+
         // checker
         bool isAttrNull(int16_t slotIndex, int16_t attrIndex);
 
@@ -251,19 +309,23 @@ namespace PeterDB {
     class RecordHelper {
     public:
         static RC
-        rawDataToRecordByte(uint8_t *rawData, const std::vector<Attribute> &attrs, uint8_t *byteSeq, int16_t &recordLen);
+        rawDataToRecordByte(uint8_t *rawData, const std::vector<Attribute> &attrs, uint8_t *byteSeq,
+                            int16_t &recordLen);
 
+        // convert selected Attribute to rawData
         static RC
-        recordByteToRawData(uint8_t record[], const int16_t recordLen, const std::vector<Attribute> &recordDescriptor,
-                            uint8_t *data);
+        recordByteToRawData(uint8_t record[], const std::vector<Attribute> &recordDescriptor,
+                            std::vector<uint16_t> &selectedAttrIndex, uint8_t *rawData);
 
-        static bool isNullAttr(uint8_t *rawData, int16_t idx);
+        static bool rawDataIsNullAttr(uint8_t *rawData, int16_t idx);
 
-        static int16_t getAttrBeginPos(uint8_t* byteSeq, int16_t attrIndex);
+        static int16_t getAttrBeginPos(uint8_t *byteSeq, int16_t attrIndex);
 
-        static int16_t getAttrEndPos(uint8_t* byteSeq, int16_t attrIndex);
+        static int16_t getAttrEndPos(uint8_t *byteSeq, int16_t attrIndex);
 
-        static int16_t getRecordAttrNum(uint8_t* byteSeq);
+        static int16_t getRecordAttrNum(uint8_t *byteSeq);
+
+        static RC recordGetAttr(uint8_t *recordByte, int16_t attrIndex, uint8_t *attr, int16_t & attrLen);
 
 
         RecordHelper();
@@ -271,8 +333,11 @@ namespace PeterDB {
         ~RecordHelper();
 
         //RC printNullAttr(char *recordByte, const std::vector<Attribute> &recordDescriptor);
-        static RC getNullFlag(uint8_t *recordByte, const std::vector<Attribute> &recordDescriptor, int8_t *nullFlag);
+        // get rawdata null flag from record data
+        static RC recordGetNullFlag(uint8_t *recordByte, const std::vector<Attribute> &recordDescriptor,
+                                    std::vector<uint16_t> &selectedAttrIndex, int8_t *nullFlag);
 
+        static bool recordIsAttrNull(uint8_t *byteSeq, int16_t attrIndex);
     };
 } // namespace PeterDB
 

@@ -11,6 +11,7 @@ namespace PeterDB {
 
     // RM_ScanIterator is an iterator to go through tuples
     class RM_ScanIterator {
+    private:
     public:
         RM_ScanIterator();
 

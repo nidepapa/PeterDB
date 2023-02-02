@@ -22,6 +22,9 @@ namespace PeterDB {
     const int32_t ERR_RBFILE_NOT_OPEN = 201;
     const int32_t ERR_RBFILE_PAGE_EXCEEDED = 202;
     const int32_t ERR_RBFILE_SLOT_INVALID = 203;
+    const int32_t ERR_RBFILE_REC_UNORIGINAL = 204;
+    const int32_t ERR_RBFILE_SLOT_EXCEEDED = 205;
+
 
 
 }

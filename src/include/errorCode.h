@@ -6,25 +6,58 @@
 #define PETERDB_ERRORCODE_H
 
 #include <cstdint>
+#include <string>
 
 namespace PeterDB {
-    const int32_t SUCCESS = 0;
-    const int32_t ERR_GENERAL = -1;
+    const int SUCCESS = 0;
+    const int ERR_GENERAL = -1;
+    // for FileHandle & PagedFileHandle
+    enum class FILE_ERROR:int{
+        FILE_NOT_EXIST = 1,
+        FILE_NOT_OPEN,
+        FILE_REMOVE_FAIL,
+        FILE_NO_ENOUGH_PAGE,
+        FILE_READ_FAIL,
+    };
+    // PageHelper & RecordHelper
+    enum class PAGE_ERROR:int{
+        ERR_UNDEFINED = -1,
+        PAGE_NO_ENOUGH_SLOT = 1,
+        PAGE_SLOT_INVALID,
+        RECORD_NULL_ATTRIBUTE,
+        RECORD_DELETED,
+        RECORD_UNORIGINAL,
+        RECORD_FLAG_WRONG,
+        WRITE_PAGE_FAIL,
+    };
 
-    // fh error
-    const int32_t ERR_FILE_NOT_EXIST = 100;
-    const int32_t ERR_FILE_NOT_OPEN = 101;
-    const int32_t ERR_FILE_REMOVE_FAIL = 102;
-    const int32_t ERR_PAGE_NOT_ENOUGH = 103;
-    const int32_t ERR_FILE_READ_FAIL = 104;
+    enum class RBFM_ERROR:int{
+        CONDITION_ATTR_IDX_INVALID = 1,
+        CONDITION_VALUE_EMPTY,
+        FILE_NOT_OPEN,
+        PAGE_EXCEEDED,
+        SLOT_INVALID,
+    };
 
-    // rbfm error
-    const int32_t ERR_RBFILE_NOT_OPEN = 201;
-    const int32_t ERR_RBFILE_PAGE_EXCEEDED = 202;
-    const int32_t ERR_RBFILE_SLOT_INVALID = 203;
-    const int32_t ERR_RBFILE_REC_UNORIGINAL = 204;
-    const int32_t ERR_RBFILE_SLOT_EXCEEDED = 205;
-
+    enum class RM_ERROR:int{
+        ERR_UNDEFINED = -1,
+        TABLE_NAME_EMPTY = 1,
+        TABLE_NAME_INVALID,
+        TABLE_ACCESS_DENIED,
+        FILE_OPEN_FAIL,
+        FILE_CLOSE_FAIL,
+        FILE_NOT_EXIST,
+        TUPLE_INSERT_FAIL,
+        TUPLE_DEL_FAIL,
+        TUPLE_UPDATE_FAIL,
+        TUPLE_READ_FAIL,
+        TUPLE_ATTR_READ_FAIL,
+        TUPLE_PRINT_FAIL,
+        ITERATOR_BEGIN_FAIL,
+        DESCRIPTOR_GET_FAIL,
+        CATALOG_MISSING,
+        CATALOG_OPEN_FAIL,
+    };
 
 
 }

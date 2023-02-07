@@ -10,7 +10,10 @@
 
 namespace PeterDB {
     PageHelper::PageHelper(FileHandle &fileHandle, PageNum pageNum) : fh(fileHandle), pageNum(pageNum) {
-        fileHandle.readPage(pageNum, dataSeq);
+        RC rc = fileHandle.readPage(pageNum, dataSeq);
+        if (rc){
+            LOG(ERROR) << "read page err" << "@ PageHelper::PageHelper" << std::endl;
+        }
         memcpy(&freeBytePointer, dataSeq + getFreeBytePointerOffset(), sizeof(short));
         memcpy(&slotCounter, dataSeq + getSlotCounterOffset(), sizeof(short));
     }
@@ -30,33 +33,36 @@ namespace PeterDB {
         freeBytePointer += recLength;
         memcpy(dataSeq + getFreeBytePointerOffset(), &freeBytePointer, sizeof(FreeBytePointer));
         // flush page on disk
-        fh.writePage(pageNum, dataSeq);
+        RC rc = fh.writePage(pageNum, dataSeq);
+        if(rc){
+            LOG(ERROR) << "write page fail " << "@ PageHelper::insertRecordInByte" << std::endl;
+            return RC(PAGE_ERROR::WRITE_PAGE_FAIL);
+        }
         // save rid
         rid.pageNum = this->pageNum;
         rid.slotNum = slotId;
 
-        return 0;
+        return SUCCESS;
     }
 
     RC PageHelper::getRecordByte(int16_t slotNum, uint8_t *byteSeq, int16_t &recLength) {
         // get the start byte of record
         int16_t recordOffset = getRecordBeginPos(slotNum);
         recLength = getRecordLen(slotNum);
-
         // read data byte to recordByte
         memcpy(byteSeq, dataSeq + recordOffset, recLength);
 
-        return 0;
+        return SUCCESS;
     }
 
     RC PageHelper::deleteRecord(uint16_t slotIndex) {
         if (slotIndex > slotCounter) {
-            LOG(ERROR) << "slotNum: " << slotIndex << "exceeded @ PageHelper::deleteRecord" << std::endl;
-            return ERR_GENERAL;
+            LOG(ERROR) << "page does not have enough slot" << " @ PageHelper::deleteRecord" << std::endl;
+            return RC(PAGE_ERROR::PAGE_NO_ENOUGH_SLOT);
         }
         if (!isRecordValid(slotIndex)) {
-            LOG(ERROR) << "slotNum: " << slotIndex << "invalid @ PageHelper::deleteRecord" << std::endl;
-            return ERR_GENERAL;
+            LOG(ERROR) << "record slot number is invalid" << " @ PageHelper::deleteRecord" << std::endl;
+            return RC(PAGE_ERROR::PAGE_SLOT_INVALID);
         }
 
         int16_t recordOffset = getRecordBeginPos(slotIndex);
@@ -198,14 +204,14 @@ namespace PeterDB {
 
 
     RC PageHelper::getRecordPointer(int16_t slotIndex, uint32_t &ridPageNum, uint16_t &ridSlotNum) {
-        if (!isRecordValid(slotIndex)) return ERR_RBFILE_SLOT_INVALID;
+        if (!isRecordValid(slotIndex)) return RC(PAGE_ERROR::PAGE_SLOT_INVALID);
         int16_t recBegin = getRecordBeginPos(slotIndex);
         Flag fg;
         memcpy(&fg, dataSeq + recBegin, sizeof(Flag));
 
         if(fg != RECORD_FLAG_POINTER) {
             LOG(ERROR) << "Record is not a pointer!" << std::endl;
-            return ERR_GENERAL;
+            return RC(PAGE_ERROR::RECORD_FLAG_WRONG);
         }
         memcpy(&ridPageNum, dataSeq + recBegin + sizeof(Flag), sizeof(uint32_t));
         memcpy(&ridSlotNum, dataSeq + recBegin + sizeof(Flag) + sizeof(uint32_t), sizeof(uint16_t));
@@ -214,8 +220,9 @@ namespace PeterDB {
     }
 
     RC PageHelper::getRecordAttr(int16_t slotIndex, int16_t attrIdx, uint8_t *attrVal) {
-        if (!isRecordValid(slotIndex)) return ERR_RBFILE_SLOT_INVALID;
-        if (isAttrNull(slotIndex, attrIdx)) return ERR_GENERAL;
+        if (!isRecordValid(slotIndex)) return RC(PAGE_ERROR::PAGE_SLOT_INVALID);
+        if (isAttrNull(slotIndex, attrIdx)) return RC(PAGE_ERROR::RECORD_NULL_ATTRIBUTE);
+
         int16_t attrLen = getAttrLen(slotIndex, attrIdx);
         memcpy(attrVal, dataSeq + getRecordBeginPos(slotIndex) + getAttrBeginPos(slotIndex, attrIdx), attrLen);
     }
@@ -223,7 +230,7 @@ namespace PeterDB {
     RC PageHelper::updateRecord(int16_t slotIndex, uint8_t byteSeq[], int16_t recLength, bool setUnoriginal) {
         if (!isRecordValid(slotIndex)) {
             LOG(ERROR) << "slotNum: " << slotIndex << "invalid @ PageHelper::updateRecord" << std::endl;
-            return ERR_GENERAL;
+            return RC(PAGE_ERROR::PAGE_SLOT_INVALID);
         }
 
         int16_t oldRecLen = getRecordLen(slotIndex);
@@ -246,7 +253,7 @@ namespace PeterDB {
     }
 
     RC PageHelper::setRecordPointToNewRID(int16_t curSlotIndex, const RID &newRecordRID, bool setUnoriginal) {
-        if (!isRecordValid(curSlotIndex)) return ERR_RBFILE_SLOT_INVALID;
+        if (!isRecordValid(curSlotIndex)) return RC(PAGE_ERROR::PAGE_SLOT_INVALID);
         int16_t recordBeg = getRecordBeginPos(curSlotIndex);
         int16_t oldRecLen = getRecordLen(curSlotIndex);
         // 1B flag + 4B pageNum + 2B slotNum
@@ -304,16 +311,14 @@ namespace PeterDB {
         RC rc;
         slotIndex++;
         if (slotIndex > slotCounter){
-            LOG(ERROR) << "Record offset exceeded! @ PageHelper::getNextRecordData" << std::endl;
-            return ERR_RBFILE_SLOT_EXCEEDED;
+            return RC(PAGE_ERROR::PAGE_NO_ENOUGH_SLOT);
         }
-        if (!isRecordDeleted(slotIndex)){
-            LOG(ERROR) << "Record is deleted! @ PageHelper::getNextRecordData" << std::endl;
-            return ERR_GENERAL;
+
+        if (isRecordDeleted(slotIndex)){
+            return RC(PAGE_ERROR::RECORD_DELETED);
         }
         if (!isOriginal(slotIndex)){
-            LOG(ERROR) << "Record is not original! @ PageHelper::getNextRecordData" << std::endl;
-            return ERR_RBFILE_REC_UNORIGINAL;
+            return RC(PAGE_ERROR::RECORD_UNORIGINAL);
         }
 
         uint16_t realDataSlotId = slotIndex;
@@ -326,15 +331,11 @@ namespace PeterDB {
         }
 
         if (realDataPageId >= fh.getNumberOfPages()){
-            LOG(ERROR) << "Record is not original! @ PageHelper::getNextRecordData" << std::endl;
-            return ERR_RBFILE_PAGE_EXCEEDED;
+            LOG(ERROR) << "Record offset exceeded! @ PageHelper::getNextRecordData" << std::endl;
+            return RC(PAGE_ERROR::PAGE_NO_ENOUGH_SLOT);
         }
         PageHelper realDataPage(fh, realDataPageId);
-        rc = realDataPage.getRecordByte(realDataSlotId, byteSeq, recordLen);
-        if (rc){
-            LOG(ERROR) << "getRecordByte Err! @ PageHelper::getNextRecordData" << std::endl;
-            return ERR_GENERAL;
-        }
+        realDataPage.getRecordByte(realDataSlotId, byteSeq, recordLen);
 
         return SUCCESS;
     }

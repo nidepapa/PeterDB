@@ -40,12 +40,12 @@ namespace PeterDB {
                                             const void *data, RID &rid) {
         RC rc = 0;
         // 1. check file state
-        if (!fileHandle.isFileOpen()) return ERR_RBFILE_NOT_OPEN;
+        if (!fileHandle.isFileOpen()) return RC(RBFM_ERROR::FILE_NOT_OPEN);
         // 2. convert raw data to byte sequence
         uint8_t pageBuffer[PAGE_SIZE] = {};
         short recByteLen = 0;
 
-        rc = RecordHelper::rawDataToRecordByte((uint8_t*) data, recordDescriptor, pageBuffer, recByteLen);
+        rc = RecordHelper::rawDataToRecord((uint8_t*) data, recordDescriptor, pageBuffer, recByteLen);
         if(rc) {
             std::cout << "Fail to Convert Record to Byte Seq @ RecordBasedFileManager::insertRecord" << std::endl;
             return rc;
@@ -81,7 +81,7 @@ namespace PeterDB {
         for(uint16_t i = 0; i < recordDescriptor.size(); i++) {
             selectedAttrIndex[i] = i;
         }
-        RecordHelper::recordByteToRawData(buffer, recordDescriptor,selectedAttrIndex, (uint8_t *)data);
+        RecordHelper::recordToRawData(buffer, recordDescriptor,selectedAttrIndex, (uint8_t *)data);
 
         return SUCCESS;
     }
@@ -89,8 +89,8 @@ namespace PeterDB {
     RC RecordBasedFileManager::readInternalRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                           const RID &rid, void *data, short & recByteLen){
         // 1. check file state and page validity
-        if (!fileHandle.isFileOpen()) return ERR_RBFILE_NOT_OPEN;
-        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return ERR_RBFILE_PAGE_EXCEEDED;
+        if (!fileHandle.isFileOpen()) return RC(RBFM_ERROR::FILE_NOT_OPEN);
+        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return RC(RBFM_ERROR::PAGE_EXCEEDED);
 
         // 2. get real data RID
         uint32_t curPageID = rid.pageNum;
@@ -99,13 +99,13 @@ namespace PeterDB {
             PageHelper thisPage(fileHandle, curPageID);
             if (!thisPage.isRecordValid(curSlotID)){
                 LOG(ERROR) << "Record is invalid! @ RecordBasedFileManager::readRecord" << std::endl;
-                return ERR_RBFILE_SLOT_INVALID;
+                return RC(RBFM_ERROR::SLOT_INVALID);
             }
             if (thisPage.isRecordData(curSlotID)) break;
             thisPage.getRecordPointer(curSlotID,curPageID,curSlotID);
             if (curPageID >= fileHandle.getNumberOfPages()){
                 LOG(ERROR) << "Target Page not exist! @ RecordBasedFileManager::readRecord" << std::endl;
-                return ERR_RBFILE_PAGE_EXCEEDED;
+                return RC(RBFM_ERROR::PAGE_EXCEEDED);
             }
         }
 
@@ -119,8 +119,8 @@ namespace PeterDB {
     RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const RID &rid) {
         // 1. check file state and page validity
-        if (!fileHandle.isFileOpen()) return ERR_RBFILE_NOT_OPEN;
-        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return ERR_RBFILE_PAGE_EXCEEDED;
+        if (!fileHandle.isFileOpen()) return RC(RBFM_ERROR::FILE_NOT_OPEN);
+        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return RC(RBFM_ERROR::PAGE_EXCEEDED);
 
         // 2. get real data RID
         uint32_t curPageID = rid.pageNum;
@@ -129,7 +129,7 @@ namespace PeterDB {
             PageHelper thisPage(fileHandle, curPageID);
             if (!thisPage.isRecordValid(curSlotID)){
                 LOG(ERROR) << "Record is invalid! @ RecordBasedFileManager::readRecord" << std::endl;
-                return ERR_RBFILE_SLOT_INVALID;
+                return RC(RBFM_ERROR::SLOT_INVALID);
             }
             if (thisPage.isRecordData(curSlotID)) break;
 
@@ -139,7 +139,7 @@ namespace PeterDB {
             thisPage.deleteRecord(oldSlotID);
             if (curPageID >= fileHandle.getNumberOfPages()){
                 LOG(ERROR) << "Target Page not exist! @ RecordBasedFileManager::deleteRecord" << std::endl;
-                return ERR_RBFILE_PAGE_EXCEEDED;
+                return RC(RBFM_ERROR::PAGE_EXCEEDED);
             }
 
         }
@@ -207,8 +207,8 @@ namespace PeterDB {
 
 
         // 1. check file state and page validity
-        if (!fileHandle.isFileOpen()) return ERR_RBFILE_NOT_OPEN;
-        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return ERR_RBFILE_PAGE_EXCEEDED;
+        if (!fileHandle.isFileOpen()) return RC(RBFM_ERROR::FILE_NOT_OPEN);
+        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return RC(RBFM_ERROR::PAGE_EXCEEDED);
         // 2. get real data RID
         uint32_t curPageID = rid.pageNum;
         uint16_t curSlotID = rid.slotNum;
@@ -217,7 +217,7 @@ namespace PeterDB {
             PageHelper thisPage(fileHandle, curPageID);
             if (!thisPage.isRecordValid(curSlotID)){
                 LOG(ERROR) << "Record is invalid! @ RecordBasedFileManager::readRecord" << std::endl;
-                return ERR_RBFILE_SLOT_INVALID;
+                return RC(RBFM_ERROR::SLOT_INVALID);
             }
             if (thisPage.isRecordData(curSlotID)) break;
             // data get pointed to is not original record
@@ -225,7 +225,7 @@ namespace PeterDB {
             thisPage.getRecordPointer(curSlotID,curPageID,curSlotID);
             if (curPageID >= fileHandle.getNumberOfPages()){
                 LOG(ERROR) << "Target Page not exist! @ RecordBasedFileManager::readRecord" << std::endl;
-                return ERR_RBFILE_PAGE_EXCEEDED;
+                return RC(RBFM_ERROR::PAGE_EXCEEDED);
             }
         }
 
@@ -233,7 +233,7 @@ namespace PeterDB {
         uint8_t pageBuffer[PAGE_SIZE] = {};
         short recByteLen = 0;
 
-        RC rc = RecordHelper::rawDataToRecordByte((uint8_t*) data, recordDescriptor, pageBuffer, recByteLen);
+        RC rc = RecordHelper::rawDataToRecord((uint8_t*) data, recordDescriptor, pageBuffer, recByteLen);
         if(rc) {
             std::cout << "Fail to Convert Record to Byte Seq @ RecordBasedFileManager::updateRecord" << std::endl;
             return rc;
@@ -267,8 +267,8 @@ namespace PeterDB {
     RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                              const RID &rid, const std::string &attributeName, void *data) {
         // 1. check file state and page validity
-        if (!fileHandle.isFileOpen()) return ERR_RBFILE_NOT_OPEN;
-        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return ERR_RBFILE_PAGE_EXCEEDED;
+        if (!fileHandle.isFileOpen()) return RC(RBFM_ERROR::FILE_NOT_OPEN);
+        if ( rid.pageNum > fileHandle.getNumberOfPages() - 1) return RC(RBFM_ERROR::PAGE_EXCEEDED);
 
         // 2. get the  whole record data
         uint8_t record[PAGE_SIZE];
@@ -290,12 +290,7 @@ namespace PeterDB {
             LOG(ERROR) << "Attribute Index Err @ RecordBasedFileManager::readAttribute" << std::endl;
             return ERR_GENERAL;
         }
-        RecordHelper::recordGetAttr(record, attrIndex, (uint8_t *)data, readAttrLen);
-        if (readAttrLen != attrLen){
-            LOG(ERROR) << " Read record attribute Err @ RecordBasedFileManager::readAttribute" << std::endl;
-            return ERR_GENERAL;
-        }
-
+        RecordHelper::recordGetAttr(record, attrIndex, recordDescriptor, (uint8_t *)data);
 
         return SUCCESS;
     }

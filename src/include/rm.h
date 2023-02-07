@@ -3,20 +3,67 @@
 
 #include <string>
 #include <vector>
+#include <cstdio>
+#include <typeinfo>
+#include <cstring>
+#include <glog/logging.h>
+#include <math.h>
 
 #include "src/include/rbfm.h"
 
 namespace PeterDB {
 #define RM_EOF (-1)  // end of a scan operator
 
+    const std::string CATALOG_TABLES = "Tables";
+    const std::string CATALOG_COLUMNS = "Columns";
+
+    const int CATALOG_VARCHAR_LEN = 50;
+    const std::string CATALOG_TABLES_TABLEID = "table-id";
+    const std::string CATALOG_TABLES_TABLENAME = "table-name";
+    const std::string CATALOG_TABLES_FILENAME = "file-name";
+    //const std::string CATALOG_TABLES_FLAG = "flag";
+
+    const std::string CATALOG_COLUMNS_TABLEID = "table-id";
+    const std::string CATALOG_COLUMNS_COLUMNNAME = "column-name";
+    const std::string CATALOG_COLUMNS_COLUMNTYPE = "column-type";
+    const std::string CATALOG_COLUMNS_COLUMNLENGTH = "column-length";
+    const std::string CATALOG_COLUMNS_COLUMNPOS = "column-position";
+
+    const int32_t CATALOG_TABLES_ATTR_NUM = 4;
+    const int32_t CATALOG_COLUMNS_ATTR_NUM = 5;
+
+    const int32_t DEFAULT_COLUMN_INT = -1;
+    const int32_t INVALID_TABLEID = -1;
+    // flag value
+    //const int32_t TABLES_FLAG_USER = 0;
+    //const int32_t TABLES_FLAG_SYS = 1;
+
+
+    const std::vector<Attribute> catalogTablesSchema = std::vector<Attribute>{
+            Attribute{CATALOG_TABLES_TABLEID, TypeInt, sizeof(int32_t)},
+            Attribute{CATALOG_TABLES_TABLENAME, TypeVarChar, CATALOG_VARCHAR_LEN},
+            Attribute{CATALOG_TABLES_FILENAME, TypeVarChar, CATALOG_VARCHAR_LEN}
+    };
+    const std::vector<Attribute> catalogColumnsSchema = std::vector<Attribute>{
+            Attribute{CATALOG_COLUMNS_TABLEID, TypeInt, sizeof(int32_t)},
+            Attribute{CATALOG_COLUMNS_COLUMNNAME, TypeVarChar, CATALOG_VARCHAR_LEN},
+            Attribute{CATALOG_COLUMNS_COLUMNTYPE, TypeInt, sizeof(int32_t)},
+            Attribute{CATALOG_COLUMNS_COLUMNLENGTH, TypeInt, sizeof(int32_t)},
+            Attribute{CATALOG_COLUMNS_COLUMNPOS, TypeInt, sizeof(int32_t)},
+    };
+
+
     // RM_ScanIterator is an iterator to go through tuples
     class RM_ScanIterator {
     private:
+        RBFM_ScanIterator rbfmIterator;
     public:
         RM_ScanIterator();
-
         ~RM_ScanIterator();
 
+        RC begin(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
+                 const std::string &conditionAttribute, const CompOp compOp, const void *value,
+                 const std::vector<std::string> &selectedAttrNames);
         // "data" follows the same format as RelationManager::insertTuple()
         RC getNextTuple(RID &rid, void *data);
 
@@ -36,12 +83,36 @@ namespace PeterDB {
 
     // Relation Manager
     class RelationManager {
+    private:
+        FileHandle fhTables;
+        FileHandle fhColumns;
+
+        bool isTableNameValid(const std::string name);
+
+        bool isTableNameEmpty(const std::string name);
+
+        bool isTableIdValid(int32_t tableID);
+
+        bool isTableAccessible(const std::string name);
+
+        bool isCatalogReady();
+
     public:
         static RelationManager &instance();
-
+        static void* scanIteratorValue(const std::string value);
+        static void* scanIteratorValue(const int value);
+        static void* scanIteratorValue(const float value);
         RC createCatalog();
 
+        RC openCatalog();
+
         RC deleteCatalog();
+
+        RC insertMetaDataToCatalog(const std::string &tableName, const std::vector<Attribute> schema);
+
+        RC deleteMetaDataFromCatalog(int32_t tableID);
+
+        int32_t getNewTableID();
 
         RC createTable(const std::string &tableName, const std::vector<Attribute> &attrs);
 
@@ -97,6 +168,45 @@ namespace PeterDB {
         RelationManager(const RelationManager &);                           // Prevent construction by copying
         RelationManager &operator=(const RelationManager &);                // Prevent assignment
 
+    };
+
+    class CatalogTablesHelper {
+    public:
+        int32_t table_id;
+        std::string table_name;
+        std::string file_name;
+        FileHandle fh;
+
+        CatalogTablesHelper();    // Constructor
+        CatalogTablesHelper(int32_t id, const std::string &name, const std::string &file);
+
+        CatalogTablesHelper(FileHandle &fileHandle);    // Constructor
+
+        ~CatalogTablesHelper();    // Destructor
+
+        RC getRecordRawData(uint8_t *apiData);
+
+        int32_t getTableID(const std::string &tableName);
+    };
+
+    class CatalogColumnsHelper {
+    public:
+        int32_t table_id;
+        std::string column_name;
+        int32_t column_type;
+        int32_t column_length;
+        int32_t column_position;
+
+        CatalogColumnsHelper();    // Constructor
+        CatalogColumnsHelper(int32_t id, const std::string &name, int32_t column_type, int32_t column_length,
+                             int32_t column_position);
+
+        CatalogColumnsHelper(uint8_t *rawData, const std::vector<std::string> &attrNames);
+
+        ~CatalogColumnsHelper();    // Destructor
+
+        RC getRecordRawData(uint8_t *apiData);
+        Attribute getAttribute();
     };
 
 } // namespace PeterDB

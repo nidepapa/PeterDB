@@ -5,6 +5,7 @@
 
 #include <string>
 #include <vector>
+#include "src/include/errorCode.h"
 
 namespace PeterDB {
 

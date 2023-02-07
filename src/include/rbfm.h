@@ -2,6 +2,7 @@
 #define _rbfm_h_
 
 #include <vector>
+#include <unordered_set>
 
 #include "pfm.h"
 
@@ -110,9 +111,8 @@ namespace PeterDB {
         bool compareStr(std::string a, std::string b);
 
     public:
-        RBFM_ScanIterator() = default;;
-
-        ~RBFM_ScanIterator() = default;;
+        RBFM_ScanIterator();
+        ~RBFM_ScanIterator();
 
         RC begin(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                  const std::string &conditionAttribute, const CompOp compOp, const void *value,
@@ -126,7 +126,7 @@ namespace PeterDB {
         // use this method to check if the attribute of current record meet the conditions
         bool recordMeetCondition(uint8_t *attr, int16_t attrLen);
 
-        RC close() { return 0; };
+        RC close() { return SUCCESS; };
     };
 
     class RecordBasedFileManager {
@@ -309,23 +309,25 @@ namespace PeterDB {
     class RecordHelper {
     public:
         static RC
-        rawDataToRecordByte(uint8_t *rawData, const std::vector<Attribute> &attrs, uint8_t *byteSeq,
+        rawDataToRecord(uint8_t *rawData, const std::vector<Attribute> &attrs, uint8_t *byteSeq,
                             int16_t &recordLen);
 
         // convert selected Attribute to rawData
         static RC
-        recordByteToRawData(uint8_t record[], const std::vector<Attribute> &recordDescriptor,
+        recordToRawData(uint8_t record[], const std::vector<Attribute> &recordDescriptor,
                             std::vector<uint16_t> &selectedAttrIndex, uint8_t *rawData);
 
         static bool rawDataIsNullAttr(uint8_t *rawData, int16_t idx);
 
-        static int16_t getAttrBeginPos(uint8_t *byteSeq, int16_t attrIndex);
+        static int16_t recordGetAttrBeginPos(uint8_t *byteSeq, int16_t attrIndex);
 
-        static int16_t getAttrEndPos(uint8_t *byteSeq, int16_t attrIndex);
+        static int16_t recordGetAttrEndPos(uint8_t *byteSeq, int16_t attrIndex);
 
-        static int16_t getRecordAttrNum(uint8_t *byteSeq);
+        static int16_t recordGetAttrLen(uint8_t *byteSeq, int16_t attrIndex);
 
-        static RC recordGetAttr(uint8_t *recordByte, int16_t attrIndex, uint8_t *attr, int16_t & attrLen);
+        static int16_t recordGetAttrNum(uint8_t *byteSeq);
+
+        static RC recordGetAttr(uint8_t *recordByte, uint16_t attrIndex, const std::vector<Attribute> &recordDescriptor, uint8_t *attr);
 
 
         RecordHelper();
@@ -335,9 +337,10 @@ namespace PeterDB {
         //RC printNullAttr(char *recordByte, const std::vector<Attribute> &recordDescriptor);
         // get rawdata null flag from record data
         static RC recordGetNullFlag(uint8_t *recordByte, const std::vector<Attribute> &recordDescriptor,
-                                    std::vector<uint16_t> &selectedAttrIndex, int8_t *nullFlag);
+                                    std::vector<uint16_t> &selectedAttrIndex, int8_t *nullFlag, int16_t nullFlagByteNum);
 
         static bool recordIsAttrNull(uint8_t *byteSeq, int16_t attrIndex);
+
     };
 } // namespace PeterDB
 

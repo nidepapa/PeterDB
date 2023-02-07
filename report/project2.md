@@ -11,20 +11,26 @@
 
 - Show your meta-data design (Tables and Columns table) and information about each column.
 
-| table_id | table_name  | file_name   | flag  |
-|----------|-------------|-------------|-------|
-| int      | varchar(50) | varchar(50) | short |
+| name       | type        | length |
+|------------|-------------|--------|
+| table_id   | int         |        |
+| table_name | varchar(50) |        |
+| file_name  | varchar(50) |        |
+| flag       | short       |        |
 
-flag: 1 - system table 2 - user table
+flag: 1 - system table 2 - user table (used as authorization control)
 
-| table_id | column_name | column_type | column_length | column_position |
-|----------|-------------|-------------|---------------|-----------------|
-| int      | varchar(50) | int         | int           | int             |
+| name            | type        | length |
+|-----------------|-------------|--------|
+| table_id        | int         |        |
+| column_name     | varchar(50) |        |
+| column_type     | int         |        |
+| column_length   | int         |        |
+| column_position | int         |        |
 
 ### 3. Internal Record Format (in case you have changed from P1, please re-enter here)
 
 - Show your record format design.
-
 
 | Flag   | PlaceHolder | AttrNum | Attr Directory    | Attr Values                |
 |--------|-------------|---------|-------------------|----------------------------|
@@ -36,12 +42,15 @@ flag: 1 - system table 2 - user table
 
 
 - Describe how you store a null field.
+
 1. the corresponding Attr Directory offset will be set to -1
 
 - Describe how you store a VarChar field.
+
 1. Save all char in VarChar field directly and store a pointer pointing to the end
 
 - Describe how your record design satisfies O(1) field access.
+
 1. Once given a field index, we can easily get the ending position of that field from Attr Directory.
    Then the field data is the byte in [last_ending_pos, this_ending_pos]. And this operation is O(1) time
    complexity.
@@ -71,13 +80,16 @@ flag: 1 - system table 2 - user table
 ### 6. Describe the following operation logic.
 
 - Delete a record
+
 1. find the record with RID
 2. delete the actual data byte and shift the rest data to the left
 3. update slot table to <-1, 0> and freeByte pointer
    PS: slot which marked as -1 can be reused in the future
 
 - Update a record
+
 1. read catelog to get record descriptor
+
 - case1: the new record is shorter
     1. find the actual old record
     2. overwrite the old record with new record
@@ -99,7 +111,6 @@ flag: 1 - system table 2 - user table
 
 close file
 
-
 - Scan on normal records
     1. get the tableName referred file
     2. use RBFM function to get one record
@@ -108,9 +119,11 @@ close file
 
 
 - Scan on deleted records
+
 1. ignore deleted record
 
 - Scan on updated records
+
 1. ignore pointer type record
 
 ### 7. Implementation Detail

@@ -7,6 +7,7 @@
 #include <iostream>
 #include <iterator>
 #include <cstring>
+#include <glog/logging.h>
 
 namespace PeterDB {
     RecordHelper::RecordHelper() = default;
@@ -53,9 +54,12 @@ namespace PeterDB {
                     memcpy(recordByte + dirPos, &valPos, sizeof(AttrDir));
                     break;
                 case TypeVarChar:
-                    int32_t strLen;
+                    RawDataStrLen strLen;
                     // get varchar length
                     memcpy(&strLen, rawData + rawDataPos, sizeof(RawDataStrLen));
+                    if (strLen > PAGE_SIZE){
+                        LOG(ERROR) << "strLen error" << std::endl;
+                    }
                     rawDataPos += sizeof(RawDataStrLen);
                     // copy string
                     memcpy(recordByte + valPos, rawData + rawDataPos, strLen);
@@ -202,8 +206,12 @@ namespace PeterDB {
 
         int16_t attrEndPos = recordGetAttrEndPos(recordByte, attrIndex);
         int16_t attrBeginPos = recordGetAttrBeginPos(recordByte, attrIndex);
-        int16_t attrLen = attrEndPos - attrBeginPos;
-        memcpy(attr + 1, recordByte + attrBeginPos, attrLen);
+        if (attrEndPos == -1){
+            return RC(PAGE_ERROR::ATTR_IS_NULL);
+        }else{
+            int16_t attrLen = attrEndPos - attrBeginPos;
+            memcpy(attr + 1, recordByte + attrBeginPos, attrLen);
+        }
         return SUCCESS;
     }
 

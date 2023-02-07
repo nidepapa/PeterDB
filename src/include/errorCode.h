@@ -29,6 +29,7 @@ namespace PeterDB {
         RECORD_UNORIGINAL,
         RECORD_FLAG_WRONG,
         WRITE_PAGE_FAIL,
+        ATTR_IS_NULL,
     };
 
     enum class RBFM_ERROR:int{

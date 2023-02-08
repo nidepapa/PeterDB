@@ -136,8 +136,3 @@ close file
 
 ### 9. Other (optional)
 
-- Freely use this section to tell us about things that are related to the project 1, but not related to the other
-  sections (optional)
-
-
-- Feedback on the project to help improve the project. (optional)

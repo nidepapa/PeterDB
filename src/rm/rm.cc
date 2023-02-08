@@ -566,14 +566,12 @@ namespace PeterDB {
         return true;
     }
 
-    void* RelationManager::scanIteratorValue(const std::string value){
+    void RelationManager::scanIteratorValue(const std::string value, uint8_t *scanVal){
         int32_t strLen = value.length();
-        uint8_t buffer[strLen + 4];
-        memset(buffer, 0, strLen + 4);
-        memcpy(buffer, &strLen, sizeof(int32_t));
+        memcpy(scanVal, &strLen, sizeof(int32_t));
         // ignore the /0
-        memcpy(buffer + sizeof(int32_t), value.c_str(), strLen);
-        return buffer;
+        memcpy(scanVal + sizeof(int32_t), value.c_str(), strLen);
+        return ;
     }
 
     void* RelationManager::scanIteratorValue(int value){

@@ -64,8 +64,10 @@ namespace PeterDB {
         RBFM_ScanIterator tablesIterator;
         // only get table id
         std::vector<std::string> tableAttrNames = {CATALOG_TABLES_TABLEID};
+        uint8_t scanVal[tableName.size() + 4];
+        RelationManager::scanIteratorValue(tableName,scanVal);
         rc = rbfm.scan(fh, catalogTablesSchema, CATALOG_TABLES_TABLENAME,
-                       EQ_OP, RelationManager::scanIteratorValue(tableName), tableAttrNames, tablesIterator);
+                       EQ_OP, scanVal, tableAttrNames, tablesIterator);
         if (rc) {
             LOG(ERROR) << "scan catalog tables error" << "@CatalogTablesHelper::getTableID" << std::endl;
             return tableID;

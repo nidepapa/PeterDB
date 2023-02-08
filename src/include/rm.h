@@ -99,7 +99,7 @@ namespace PeterDB {
 
     public:
         static RelationManager &instance();
-        static void* scanIteratorValue(const std::string value);
+        static void scanIteratorValue(const std::string value,  uint8_t *scanVal);
         static void* scanIteratorValue(const int value);
         static void* scanIteratorValue(const float value);
         RC createCatalog();

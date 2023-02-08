@@ -120,6 +120,8 @@ namespace PeterDBTesting {
 
         void SetUp() override {
 
+            PeterDB::RecordBasedFileManager &rbfm = PeterDB::RecordBasedFileManager::instance();
+            rbfm.destroyFile(tableName);
             if (!fileExists(tableName)) {
 
                 // Try to delete the System Catalog.

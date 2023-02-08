@@ -75,9 +75,12 @@ namespace PeterDB {
         rc = readMetadata();
         if (rc) {
             LOG(ERROR) << "read meta data Err" << "@FileHandle::openFile()" << endl;
-            fclose(fileInMemory);
+            if (fileInMemory) {
+                fclose(fileInMemory);
+            }
             return rc;
         }
+        fclose(fileInMemory);
         return SUCCESS;
     };
 
@@ -126,6 +129,12 @@ namespace PeterDB {
     }
 
     RC FileHandle::appendPage(const void *data) {
+        fseek(fileInMemory, 0 , SEEK_SET);
+        int fileLen = ftell(fileInMemory);
+        if (fileLen < File_Header_Page_Size){
+            LOG(ERROR)<< "fileInMemory err"<<endl;
+        }
+        fseek(fileInMemory, 0 , SEEK_SET);
         fseek(fileInMemory, File_Header_Page_Size + PAGE_SIZE * pageCounter, SEEK_SET);
         fwrite(data, PAGE_SIZE, 1, fileInMemory);
         appendPageCounter = appendPageCounter + 1;
@@ -150,7 +159,7 @@ namespace PeterDB {
 
         clearerr(PeterDB::FileHandle::fileInMemory);
         fseek(fileInMemory, 0, SEEK_SET);
-
+        uint32_t counters[4];
         fwrite(&pageCounter, sizeof(uint32_t),4, fileInMemory);
         fflush(fileInMemory);
         return SUCCESS;

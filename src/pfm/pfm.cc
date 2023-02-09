@@ -2,8 +2,6 @@
 #include <cstdio>
 #include <typeinfo>
 #include <cstring>
-#include "src/include/errorCode.h"
-#include <glog/logging.h>
 
 using namespace std;
 
@@ -23,7 +21,7 @@ namespace PeterDB {
     PagedFileManager &PagedFileManager::operator=(const PagedFileManager &) = default;
 
     RC PagedFileManager::createFile(const string &fileName) {
-        if (isFileExists(fileName)) return RC(FILE_ERROR::FILE_NOT_EXIST);
+        if (isFileExists(fileName)) return -1;
 
         FILE* fp = fopen(fileName.c_str(), "w+b");
 
@@ -32,16 +30,20 @@ namespace PeterDB {
         fwrite(&header, File_Header_Page_Size, 1, fp);
         fflush(fp);
         fclose(fp);
-        return SUCCESS;
+        return 0;
     }
 
     RC PagedFileManager::destroyFile(const string &fileName) {
-        if (!isFileExists(fileName)) return RC(FILE_ERROR::FILE_NOT_EXIST);
-        if (remove(fileName.c_str()) != 0) return RC(FILE_ERROR::FILE_REMOVE_FAIL);
-        return SUCCESS;
+        if (!isFileExists(fileName)) return -1;
+        // remove file
+        if (remove(fileName.c_str()) != 0) return -1;
+        return 0;
     }
 
     RC PagedFileManager::openFile(const string &fileName, FileHandle &fileHandle) {
+        if (!isFileExists(fileName)){
+            return RC(FILE_ERROR::FILE_NOT_EXIST);
+        }
         return fileHandle.openFile(fileName);
     }
 
@@ -66,56 +68,48 @@ namespace PeterDB {
     FileHandle::~FileHandle() = default;
 
     RC FileHandle::openFile(const std::string& fileName){
-        RC rc = 0;
-        // reopenfile is fine;
+        RC code = 0;
         // open file as binary
         fileInMemory = fopen(fileName.c_str(), "r+b");
         fileIsOpen = true;
         FileHandle::fileName = fileName;
-        rc = readMetadata();
-        if (rc) {
-            LOG(ERROR) << "read meta data Err" << "@FileHandle::openFile()" << endl;
-            if (fileInMemory) {
-                fclose(fileInMemory);
-            }
-            return rc;
-        }
+        code = readMetadata();
+        if (code) goto err;
+        return 0;
+        err:
         fclose(fileInMemory);
-        return SUCCESS;
+        return -1;
     };
 
     RC FileHandle::closeFile(){
-        if (!fileIsOpen) return RC(FILE_ERROR::FILE_NOT_OPEN);
-        RC rc = flushMetadata();
-        if (rc){
-            LOG(ERROR) << "flush metadata error" << "@FileHandle::closeFile()" << endl;
-            return rc;
-        }
+        if (!fileIsOpen) return -1;
         fileIsOpen = false;
+        flushMetadata();
         fclose(fileInMemory);
-        return SUCCESS;
+        return 0;
     }
 
     RC FileHandle::readPage(PageNum pageNum, void *data) {
         size_t result;
         // check if pageNum is valid
         if (getNumberOfPages() <= pageNum) {
-            return RC(FILE_ERROR::FILE_NO_ENOUGH_PAGE);
+            return -1;
         }
         // point to that page
         fseek(fileInMemory, File_Header_Page_Size + PAGE_SIZE * pageNum, SEEK_SET);
         // retrieve data
         result = fread(data, PAGE_SIZE, 1, fileInMemory);
-        if (result < 1) return RC(FILE_ERROR::FILE_READ_FAIL);
+        if (result < 1) return -1;
         // update counter
         readPageCounter = readPageCounter + 1;
-        return flushMetadata();
+        flushMetadata();
+        return 0;
     }
 
     RC FileHandle::writePage(PageNum pageNum, const void *data) {
         // check if pageNum is valid
         if (getNumberOfPages() <= pageNum) {
-            return RC(FILE_ERROR::FILE_NO_ENOUGH_PAGE);
+            return -1;
         }
         // point to that page
         fseek(fileInMemory, File_Header_Page_Size + PAGE_SIZE * pageNum, SEEK_SET);
@@ -123,23 +117,23 @@ namespace PeterDB {
         fwrite(data, PAGE_SIZE, 1, fileInMemory);
         // write into file on disk
         fflush(fileInMemory);
+        if (ferror(fileInMemory)){
+            // todo error
+            return -1;
+        }
         // update counter
         writePageCounter = writePageCounter + 1;
-        return flushMetadata();
+        flushMetadata();
+        return 0;
     }
 
     RC FileHandle::appendPage(const void *data) {
-        fseek(fileInMemory, 0 , SEEK_SET);
-        int fileLen = ftell(fileInMemory);
-        if (fileLen < File_Header_Page_Size){
-            LOG(ERROR)<< "fileInMemory err"<<endl;
-        }
-        fseek(fileInMemory, 0 , SEEK_SET);
         fseek(fileInMemory, File_Header_Page_Size + PAGE_SIZE * pageCounter, SEEK_SET);
         fwrite(data, PAGE_SIZE, 1, fileInMemory);
         appendPageCounter = appendPageCounter + 1;
         pageCounter = pageCounter + 1;
-        return flushMetadata();
+        flushMetadata();
+        return 0;
     }
 
     unsigned FileHandle::getNumberOfPages() {
@@ -150,28 +144,27 @@ namespace PeterDB {
         readPageCount = readPageCounter;
         writePageCount = writePageCounter;
         appendPageCount = appendPageCounter;
-        return SUCCESS;
+        return 0;
     }
 
     RC FileHandle::flushMetadata(){
-        if (!fileIsOpen) return RC(FILE_ERROR::FILE_NOT_OPEN);
-        if (fileInMemory == NULL) return RC(FILE_ERROR::FILE_NOT_OPEN);
-
+        if (!fileIsOpen){
+            return -1;
+        }
         clearerr(PeterDB::FileHandle::fileInMemory);
         fseek(fileInMemory, 0, SEEK_SET);
-        uint32_t counters[4];
-        fwrite(&pageCounter, sizeof(uint32_t),4, fileInMemory);
+
+        fwrite(&pageCounter, sizeof(unsigned),4, fileInMemory);
         fflush(fileInMemory);
-        return SUCCESS;
+        return 0;
     }
 
     RC FileHandle::readMetadata(){
-        if (!fileIsOpen) return RC(FILE_ERROR::FILE_NOT_OPEN);
-        if (fileInMemory == NULL) return RC(FILE_ERROR::FILE_NOT_OPEN);
+        if (!fileIsOpen) return -1;
         fseek(fileInMemory, 0 ,SEEK_SET);
         clearerr(PeterDB::FileHandle::fileInMemory);
-        fread(&pageCounter, sizeof(uint32_t), 4, fileInMemory);
-        return SUCCESS;
+        fread(&pageCounter, sizeof(unsigned), 4, fileInMemory);
+        return 0;
     }
 
     bool FileHandle::isFileOpen(){

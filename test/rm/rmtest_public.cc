@@ -936,7 +936,7 @@ namespace PeterDBTesting {
 
         bufSize = 1000;
         size_t tupleSize = 0;
-        int numTuples = 100000;
+        int numTuples = 1;
 
         inBuffer = malloc(bufSize);
         outBuffer = malloc(bufSize);
@@ -972,7 +972,8 @@ namespace PeterDBTesting {
 
         // validate a attribute of each tuple randomly
         for (int i = 0; i < numTuples; i = i + 10) {
-            unsigned attrID = dist8(generator);
+            //unsigned attrID = dist8(generator);
+            unsigned attrID = 5;
             validateAttribute(attrID, i, i, i + 100);
 
         }

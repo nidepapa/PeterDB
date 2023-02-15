@@ -18,6 +18,7 @@ namespace PeterDB {
         FILE_REMOVE_FAIL,
         FILE_NO_ENOUGH_PAGE,
         FILE_READ_FAIL,
+        FILE_READ_ONE_PAGE_FAIL,
     };
     // PageHelper & RecordHelper
     enum class PAGE_ERROR:int{

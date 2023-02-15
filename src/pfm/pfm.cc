@@ -34,16 +34,13 @@ namespace PeterDB {
     }
 
     RC PagedFileManager::destroyFile(const string &fileName) {
-        if (!isFileExists(fileName)) return -1;
-        // remove file
+        if (!isFileExists(fileName)) return RC(FILE_ERROR::FILE_NOT_EXIST);
         if (remove(fileName.c_str()) != 0) return -1;
         return 0;
     }
 
     RC PagedFileManager::openFile(const string &fileName, FileHandle &fileHandle) {
-        if (!isFileExists(fileName)){
-            return RC(FILE_ERROR::FILE_NOT_EXIST);
-        }
+        if (!isFileExists(fileName))return RC(FILE_ERROR::FILE_NOT_EXIST);
         return fileHandle.openFile(fileName);
     }
 
@@ -68,48 +65,41 @@ namespace PeterDB {
     FileHandle::~FileHandle() = default;
 
     RC FileHandle::openFile(const std::string& fileName){
-        RC code = 0;
         // open file as binary
         fileInMemory = fopen(fileName.c_str(), "r+b");
         fileIsOpen = true;
-        FileHandle::fileName = fileName;
-        code = readMetadata();
-        if (code) goto err;
-        return 0;
-        err:
-        fclose(fileInMemory);
-        return -1;
+        this->fileName = fileName;
+        return readMetadata();
     };
 
     RC FileHandle::closeFile(){
-        if (!fileIsOpen) return -1;
-        fileIsOpen = false;
+        if (!isFileOpen()) return RC(FILE_ERROR::FILE_NOT_OPEN);
         flushMetadata();
         fclose(fileInMemory);
-        return 0;
+        fileIsOpen = false;
+        return SUCCESS;
     }
 
     RC FileHandle::readPage(PageNum pageNum, void *data) {
         size_t result;
         // check if pageNum is valid
         if (getNumberOfPages() <= pageNum) {
-            return -1;
+            return RC(FILE_ERROR::FILE_NO_ENOUGH_PAGE);
         }
         // point to that page
         fseek(fileInMemory, File_Header_Page_Size + PAGE_SIZE * pageNum, SEEK_SET);
         // retrieve data
         result = fread(data, PAGE_SIZE, 1, fileInMemory);
-        if (result < 1) return -1;
+        if (result < 1) return RC(FILE_ERROR::FILE_READ_ONE_PAGE_FAIL);
         // update counter
         readPageCounter = readPageCounter + 1;
-        flushMetadata();
-        return 0;
+        return flushMetadata();
     }
 
     RC FileHandle::writePage(PageNum pageNum, const void *data) {
         // check if pageNum is valid
         if (getNumberOfPages() <= pageNum) {
-            return -1;
+            return RC(FILE_ERROR::FILE_NO_ENOUGH_PAGE);
         }
         // point to that page
         fseek(fileInMemory, File_Header_Page_Size + PAGE_SIZE * pageNum, SEEK_SET);
@@ -117,14 +107,9 @@ namespace PeterDB {
         fwrite(data, PAGE_SIZE, 1, fileInMemory);
         // write into file on disk
         fflush(fileInMemory);
-        if (ferror(fileInMemory)){
-            // todo error
-            return -1;
-        }
         // update counter
         writePageCounter = writePageCounter + 1;
-        flushMetadata();
-        return 0;
+        return flushMetadata();
     }
 
     RC FileHandle::appendPage(const void *data) {
@@ -132,8 +117,7 @@ namespace PeterDB {
         fwrite(data, PAGE_SIZE, 1, fileInMemory);
         appendPageCounter = appendPageCounter + 1;
         pageCounter = pageCounter + 1;
-        flushMetadata();
-        return 0;
+        return flushMetadata();
     }
 
     unsigned FileHandle::getNumberOfPages() {
@@ -148,8 +132,8 @@ namespace PeterDB {
     }
 
     RC FileHandle::flushMetadata(){
-        if (!fileIsOpen){
-            return -1;
+        if (!isFileOpen()){
+            return RC(FILE_ERROR::FILE_NOT_OPEN);
         }
         clearerr(PeterDB::FileHandle::fileInMemory);
         fseek(fileInMemory, 0, SEEK_SET);
@@ -160,7 +144,7 @@ namespace PeterDB {
     }
 
     RC FileHandle::readMetadata(){
-        if (!fileIsOpen) return -1;
+        if (!isFileOpen()) return RC(FILE_ERROR::FILE_NOT_OPEN);
         fseek(fileInMemory, 0 ,SEEK_SET);
         clearerr(PeterDB::FileHandle::fileInMemory);
         fread(&pageCounter, sizeof(unsigned), 4, fileInMemory);
@@ -168,7 +152,7 @@ namespace PeterDB {
     }
 
     bool FileHandle::isFileOpen(){
-        return this->fileIsOpen;
+        return this->fileIsOpen && fileInMemory != NULL;
     }
 
 

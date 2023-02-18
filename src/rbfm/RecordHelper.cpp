@@ -4,8 +4,8 @@
 #include <cmath>
 #include "src/include/rbfm.h"
 #include "src/include/errorCode.h"
+#include "src/include/record.h"
 #include <iostream>
-#include <iterator>
 #include <cstring>
 #include <glog/logging.h>
 
@@ -122,7 +122,7 @@ namespace PeterDB {
     }
 
      // check if the ith attribute in raw data is null or not
-     bool RecordHelper::rawDataIsNullAttr(uint8_t *rawData, int16_t idx) {
+    bool RecordHelper::rawDataIsNullAttr(uint8_t *rawData, int16_t idx) {
         short byteNumber = idx / 8;
         short bitNumber = idx % 8;
         uint8_t mask = 0x01;
@@ -215,4 +215,59 @@ namespace PeterDB {
         return SUCCESS;
     }
 
+// ==================================================
+// todo Definitions for Record struct
+// ==================================================
+    RC Record::fromRawRecord(RawRecord* rawRecord, const std::vector<Attribute> &recordDescriptor, int16_t &recordLen){
+        this->getDirectory()->header.Flag = RECORD_FLAG_DATA;
+        this->getDirectory()->header.AttrNum = recordDescriptor.size();
+        // 3. calculate offset
+        const int nullByteSize = rawRecord->nullByteSize(recordDescriptor);
+        //int16_t nullFlagLenInByte = ceil(attrNum / 8.0);
+        //int16_t dirOffset = sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum);
+        //int16_t valOffset = dirOffset + sizeof(AttrDir) * attrNum;
+        uint8_t *valPos = (uint8_t*)this->getDataSectionStart();
+        // 4. write directory and each attribute raw data
+        int16_t rawRecordOffset = nullByteSize, recordOffset = 0;
+        // directory move right by 2 byte
+        for (short i = 0; i < this->getDirectory()->header.AttrNum; i++) {
+            if (rawRecord->isNullField(i)) {
+                this->getDirectory()->getEntry(i)->setNull();
+                continue;
+            }
+            switch (recordDescriptor[i].type) {
+                case TypeInt:
+                case TypeReal:
+                    memcpy(valPos + recordOffset, rawRecord + rawRecordOffset, recordDescriptor[i].length);
+                    rawRecordOffset += recordDescriptor[i].length;
+                    recordOffset += recordDescriptor[i].length;
+                    // set directory
+                    this->getDirectory()->getEntry(i)->setOffset(recordOffset);
+                    break;
+                case TypeVarChar:
+                    StrLenIndicator strLen;
+                    // get varchar length
+                    memcpy(&strLen, rawRecord + rawRecordOffset, sizeof(StrLenIndicator));
+                    assert(strLen <= PAGE_SIZE);
+                    rawRecordOffset += sizeof(StrLenIndicator);
+                    // copy string
+                    memcpy(valPos + recordOffset, rawRecord + rawRecordOffset, strLen);
+                    rawRecordOffset += strLen;
+                    recordOffset += strLen;
+                    // set directory
+                    this->getDirectory()->getEntry(i)->setOffset(recordOffset);
+                    break;
+            }
+        }
+        recordLen = this->getDirectorySize() + recordOffset;
+        return SUCCESS;
+    }
+
+// ==================================================
+// todo Definitions for RawRecord struct
+// ==================================================
+    int RawRecord::nullByteSize(const std::vector<Attribute>& recordDescriptor){
+        return nullByteSize(recordDescriptor.size());
+    }
 }
+

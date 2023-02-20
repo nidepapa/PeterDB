@@ -61,7 +61,18 @@ namespace PeterDB {
         CATALOG_OPEN_FAIL,
     };
 
-
+    enum class IX_ERROR:int{
+        ERR_UNDEFINED = -1,
+        ERR_FILE_ALREADY_OPEN = 1,
+        ERR_FILE_OPEN_FAIL,
+        FILE_NOT_OPEN,
+        FILE_NO_ENOUGH_PAGE,
+        FILE_READ_ONE_PAGE_FAIL,
+        ROOT_PAGE_NOT_EXIST,
+        FILE_EXIST,
+        FILE_NOT_EXIST,
+        FILE_DELETE_FAIL,
+        };
 }
 
 #endif //PETERDB_ERRORCODE_H

@@ -10,6 +10,10 @@
 # define IX_EOF (-1)  // end of the index scan
 
 namespace PeterDB {
+    const int32_t IXFile_Header_Page_Size = 4096;
+    const int32_t NULL_PTR = -1;
+
+
     class IX_ScanIterator;
 
     class IXFileHandle;
@@ -49,6 +53,8 @@ namespace PeterDB {
         // Print the B+ tree in pre-order (in a JSON record format)
         RC printBTree(IXFileHandle &ixFileHandle, const Attribute &attribute, std::ostream &out) const;
 
+        static bool isFileExists(const std::string fileName);
+
     protected:
         IndexManager() = default;                                                   // Prevent construction
         ~IndexManager() = default;                                                  // Prevent unwanted destruction
@@ -80,15 +86,45 @@ namespace PeterDB {
         unsigned ixReadPageCounter;
         unsigned ixWritePageCounter;
         unsigned ixAppendPageCounter;
+        int32_t rootPagePtr;
+        // attrType
+
+        std::string fileName;
+        FILE *fileInMemory;
 
         // Constructor
         IXFileHandle();
-
         // Destructor
         ~IXFileHandle();
 
+        RC open(const std::string& filename);
+        RC close();
+
+        RC readPage(uint32_t pageNum, void* data);
+        RC writePage(uint32_t pageNum, const void* data);
+        RC appendPage(const void* data);
+        RC appendEmptyPage();
+        RC initHiddenPage();
+        RC readMetaData();
+        RC flushMetaData();
+
+        RC createRootPage();
+
+        uint32_t getRoot();
+        RC setRoot(int32_t newRoot);
+
+        std::string getFileName() const;
+        bool isOpen();
+        bool isRootNull() const;
+
+        uint32_t getNumberOfPages() const;
+        uint32_t getLastPageIndex() const;
+
+
+
         // Put the current counter values of associated PF FileHandles into variables
         RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
+
 
     };
 }// namespace PeterDB

@@ -29,7 +29,7 @@ namespace PeterDB{
         // open file as binary
         fileInMemory = fopen(fileName.c_str(), "r+b");
         if (!isOpen())return static_cast<RC>(IX_ERROR::ERR_FILE_OPEN_FAIL);
-        this->fileName = fileName;
+        this->fileName = filename;
         return readMetaData();
     }
 
@@ -48,14 +48,26 @@ namespace PeterDB{
     RC IXFileHandle::readMetaData() {
         fseek(fileInMemory, 0, SEEK_SET);
         clearerr(PeterDB::IXFileHandle::fileInMemory);
-        fread(&ixReadPageCounter, sizeof(unsigned), 4, fileInMemory);
+
+        fread(&ixReadPageCounter, sizeof(unsigned), 1, fileInMemory);
+        fread(&ixWritePageCounter, sizeof(unsigned), 1, fileInMemory);
+        fread(&ixAppendPageCounter, sizeof(unsigned), 1, fileInMemory);
+        fread(&rootPagePtr, sizeof(int32_t), 1, fileInMemory);
+        fread(&KeyType, sizeof(int32_t), 1, fileInMemory);
+
         return SUCCESS;
     }
 
     RC IXFileHandle::flushMetaData() {
         clearerr(PeterDB::IXFileHandle::fileInMemory);
         fseek(fileInMemory, 0, SEEK_SET);
-        fwrite(&ixReadPageCounter, sizeof(unsigned), 4, fileInMemory);
+
+        fwrite(&ixReadPageCounter, sizeof(unsigned), 1, fileInMemory);
+        fwrite(&ixWritePageCounter, sizeof(unsigned), 1, fileInMemory);
+        fwrite(&ixAppendPageCounter, sizeof(unsigned), 1, fileInMemory);
+        fwrite(&rootPagePtr, sizeof(int32_t), 1, fileInMemory);
+        fwrite(&KeyType, sizeof(int32_t), 1, fileInMemory);
+
         fflush(fileInMemory);
         return SUCCESS;
     }
@@ -65,7 +77,7 @@ namespace PeterDB{
         if (getNumberOfPages() <= pageNum) {
             return RC(IX_ERROR::FILE_NO_ENOUGH_PAGE);
         }
-        fseek(fileInMemory, IXFile_Header_Page_Size + PAGE_SIZE * pageNum, SEEK_SET);
+        fseek(fileInMemory, IX::File_Header_Page_Size + PAGE_SIZE * pageNum, SEEK_SET);
         size_t result = fread(data, PAGE_SIZE, 1, fileInMemory);
         assert(result == 1);
         ixReadPageCounter = ixReadPageCounter + 1;
@@ -77,7 +89,7 @@ namespace PeterDB{
         if (getNumberOfPages() <= pageNum) {
             return RC(IX_ERROR::FILE_NO_ENOUGH_PAGE);
         }
-        fseek(fileInMemory, IXFile_Header_Page_Size + PAGE_SIZE * pageNum, SEEK_SET);
+        fseek(fileInMemory, IX::File_Header_Page_Size + PAGE_SIZE * pageNum, SEEK_SET);
         fwrite(data, PAGE_SIZE, 1, fileInMemory);
         fflush(fileInMemory);
         ixWritePageCounter = ixWritePageCounter + 1;
@@ -86,7 +98,7 @@ namespace PeterDB{
 
     RC IXFileHandle::appendPage(const void *data) {
         if (!isOpen()) return RC(IX_ERROR::FILE_NOT_OPEN);
-        fseek(fileInMemory, IXFile_Header_Page_Size + PAGE_SIZE * getNumberOfPages(), SEEK_SET);
+        fseek(fileInMemory, IX::File_Header_Page_Size + PAGE_SIZE * getNumberOfPages(), SEEK_SET);
         fwrite(data, PAGE_SIZE, 1, fileInMemory);
         ixAppendPageCounter = ixAppendPageCounter + 1;
         return flushMetaData();
@@ -101,10 +113,10 @@ namespace PeterDB{
 
     RC IXFileHandle::initHiddenPage() {
         if (!isOpen()) return RC(IX_ERROR::FILE_NOT_OPEN);
-        uint8_t emptyPage[IXFile_Header_Page_Size];
-        memset(emptyPage, 0, IXFile_Header_Page_Size);
+        uint8_t emptyPage[IX::File_Header_Page_Size];
+        memset(emptyPage, 0, IX::File_Header_Page_Size);
         fseek(fileInMemory, 0, SEEK_SET);
-        fwrite(emptyPage, IXFile_Header_Page_Size, 1, fileInMemory);
+        fwrite(emptyPage, IX::File_Header_Page_Size, 1, fileInMemory);
         return flushMetaData();
     }
 
@@ -129,7 +141,7 @@ namespace PeterDB{
     }
 
     bool IXFileHandle::isRootNull() const {
-        if (rootPagePtr == NULL_PTR)return true;
+        if (rootPagePtr == IX::NULL_PTR)return true;
         return false;
     }
 

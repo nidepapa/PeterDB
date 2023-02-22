@@ -33,6 +33,7 @@ namespace PeterDB {
     }
 
     RC IndexManager::closeFile(IXFileHandle &ixFileHandle) {
+        if (!isFileExists(ixFileHandle.getFileName())) return RC(IX_ERROR::FILE_NOT_EXIST);
         return ixFileHandle.close();
     }
 
@@ -66,23 +67,6 @@ namespace PeterDB {
         return true;
     }
 
-/*==============================================
- * IX_ScanIterator
- * =============================================
- */
-    IX_ScanIterator::IX_ScanIterator() {
-    }
-
-    IX_ScanIterator::~IX_ScanIterator() {
-    }
-
-    RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
-        return -1;
-    }
-
-    RC IX_ScanIterator::close() {
-        return -1;
-    }
 
 
 } // namespace PeterDB

@@ -10,8 +10,15 @@
 # define IX_EOF (-1)  // end of the index scan
 
 namespace PeterDB {
-    const int32_t IXFile_Header_Page_Size = 4096;
-    const int32_t NULL_PTR = -1;
+    namespace IX{
+        const int32_t File_Header_Page_Size = 4096;
+        const int32_t NULL_PTR = -1;
+
+        const int32_t NODE_TYPE_LEN = 2;
+        const int32_t FREEBYTEPOINTER_LEN = 2;
+        const int32_t KEY_COUNTER_LEN = 2;
+        const int32_t NEXT_POINTER_LEN = 4;
+    }
 
 
     class IX_ScanIterator;
@@ -87,7 +94,8 @@ namespace PeterDB {
         unsigned ixWritePageCounter;
         unsigned ixAppendPageCounter;
         int32_t rootPagePtr;
-        // attrType
+        // int, real, varchar, for sanity check
+        int32_t KeyType;
 
         std::string fileName;
         FILE *fileInMemory;

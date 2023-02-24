@@ -72,6 +72,8 @@ namespace PeterDB {
         FILE_EXIST,
         FILE_NOT_EXIST,
         FILE_DELETE_FAIL,
+        PAGE_NO_ENOUGH_SPACE,
+        FREEBYTE_EXCEEDED,
         };
 }
 

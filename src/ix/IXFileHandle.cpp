@@ -8,7 +8,7 @@ namespace PeterDB{
         ixReadPageCounter = 0;
         ixWritePageCounter = 0;
         ixAppendPageCounter = 0;
-        rootPagePtr = NULL_PTR;
+        rootPagePtr = IX::NULL_PTR;
         fileInMemory = nullptr;
     }
 
@@ -25,10 +25,10 @@ namespace PeterDB{
     }
 
     RC IXFileHandle::open(const std::string &filename) {
-        if (isOpen()) return static_cast<RC>(IX_ERROR::ERR_FILE_ALREADY_OPEN);
+        if (isOpen()) return RC(IX_ERROR::ERR_FILE_ALREADY_OPEN);
         // open file as binary
-        fileInMemory = fopen(fileName.c_str(), "r+b");
-        if (!isOpen())return static_cast<RC>(IX_ERROR::ERR_FILE_OPEN_FAIL);
+        fileInMemory = fopen(filename.c_str(), "r+b");
+        if (!isOpen())return RC(IX_ERROR::ERR_FILE_OPEN_FAIL);
         this->fileName = filename;
         return readMetaData();
     }
@@ -46,6 +46,7 @@ namespace PeterDB{
     }
 
     RC IXFileHandle::readMetaData() {
+        if(!isOpen()) return RC(IX_ERROR::FILE_NOT_OPEN);
         fseek(fileInMemory, 0, SEEK_SET);
         clearerr(PeterDB::IXFileHandle::fileInMemory);
 
@@ -59,6 +60,7 @@ namespace PeterDB{
     }
 
     RC IXFileHandle::flushMetaData() {
+        if(!isOpen()) return RC(IX_ERROR::FILE_NOT_OPEN);
         clearerr(PeterDB::IXFileHandle::fileInMemory);
         fseek(fileInMemory, 0, SEEK_SET);
 

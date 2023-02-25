@@ -76,7 +76,10 @@ namespace PeterDB {
                           bool lowKeyInclusive,
                           bool highKeyInclusive,
                           IX_ScanIterator &ix_ScanIterator) {
-        return -1;
+        RC ret = 0;
+        ret = ix_ScanIterator.open(&ixFileHandle, attribute, (uint8_t*)lowKey, (uint8_t*)highKey, lowKeyInclusive, highKeyInclusive);
+        if(ret) return ret;
+        return SUCCESS;
     }
 
     RC IndexManager::printBTree(IXFileHandle &ixFileHandle, const Attribute &attribute, std::ostream &out) const {
@@ -143,6 +146,30 @@ namespace PeterDB {
             }
 
         }
+        return SUCCESS;
+    }
+
+    RC IndexManager::findTargetLeafNode(IXFileHandle &ixFileHandle, uint32_t &targetLeaf, const uint8_t *key,
+                                        const Attribute &attr) {
+        RC ret = 0;
+        if(ixFileHandle.isRootNull()) return RC(IX_ERROR::ROOT_NOT_EXIST);
+
+        int32_t curPageNum = ixFileHandle.getRoot();
+        while(curPageNum != IX::NULL_PTR && curPageNum < ixFileHandle.getNumberOfPages()) {
+            IXNode node(ixFileHandle, curPageNum);
+            if (node.getNodeType() == IX::LEAF_NODE){
+                //*nodepointer is a leaf, return nodepointer
+                break;
+            }else if(node.getNodeType() == IX::INTERNAL_NODE){
+                InternalNode internal(ixFileHandle, curPageNum);
+                ret = internal.getTargetChild((leafEntry*)key, attr,curPageNum);
+                if (ret) return ret;
+            }
+        }
+        if(curPageNum != IX::NULL_PTR && curPageNum < ixFileHandle.getNumberOfPages()) {
+            targetLeaf = curPageNum;
+        }else{return RC(IX_ERROR::LEAF_FOUND_FAIL);}
+
         return SUCCESS;
     }
 

@@ -7,17 +7,17 @@ namespace PeterDB {
 
     RC InternalNode::getTargetChild(leafEntry *key, const Attribute &attr, int32_t &childPage) {
         RC ret = 0;
-//        if(key == nullptr) {    // For scanner, get the first child
-//            memcpy(&childPtr, data, IX::INDEXPAGE_CHILD_PTR_LEN);
-//            return 0;
-//        }
+        if(key == nullptr) {    // For scanner, get the first child
+            memcpy(&childPage, data, IX::NEXT_POINTER_LEN);
+            return 0;
+        }
         // skip the left most pointer;
-        auto firstLargerEntry = (internalEntry *) (data + IX::NEXT_POINTER_LEN);
+        auto firstGEEntry = (internalEntry *) (data + IX::NEXT_POINTER_LEN);
 
-        ret = findPosToInsertKey(firstLargerEntry, key, attr);
+        ret = findPosToInsertKey(firstGEEntry, key, attr);
         assert(ret == SUCCESS);
         // Get previous child pointer
-        childPage = firstLargerEntry->getLeftChild();
+        childPage = firstGEEntry->getLeftChild();
         return SUCCESS;
     }
 
@@ -126,13 +126,13 @@ namespace PeterDB {
         return SUCCESS;
     }
 
-    RC InternalNode::findPosToInsertKey(internalEntry *firstLargerKey, leafEntry *key, const Attribute &attr) {
-        assert(firstLargerKey == (internalEntry *) (data + IX::NEXT_POINTER_LEN));
+    RC InternalNode::findPosToInsertKey(internalEntry *firstGEEntry, leafEntry *key, const Attribute &attr) {
+        assert(firstGEEntry == (internalEntry *) (data + IX::NEXT_POINTER_LEN));
         // empty page, insert directly;
         if (getkeyCounter() == 0)return SUCCESS;
         for (int16_t i = 0; i < getkeyCounter(); i++) {
-            if (isKeyMeetCompCondition(firstLargerKey, key, attr, GT_OP)) break;
-            firstLargerKey = firstLargerKey->getNextEntry(attr.type);
+            if (isKeyMeetCompCondition(firstGEEntry, key, attr, GE_OP)) break;
+            firstGEEntry = firstGEEntry->getNextEntry(attr.type);
         }
         return SUCCESS;
     }

@@ -109,9 +109,9 @@ namespace PeterDB {
             return *getKeyPtr<T>();
         }
 
-        void getRID(AttrType type, int32_t &pageNum, int16_t &slotNum) {
-            memcpy(&pageNum, (uint8_t *) this + getKeyLength(type), sizeof(int32_t));
-            memcpy(&slotNum, (uint8_t *) this + getKeyLength(type) + sizeof(int32_t), sizeof(int16_t));
+        void getRID(AttrType type, uint32_t &pageNum, uint16_t &slotNum) {
+            memcpy(&pageNum, (uint8_t *) this + getKeyLength(type), sizeof(uint32_t));
+            memcpy(&slotNum, (uint8_t *) this + getKeyLength(type) + sizeof(uint32_t), sizeof(uint16_t));
         }
 
         void setKey(AttrType type, uint8_t *key) {
@@ -161,7 +161,8 @@ namespace PeterDB {
         // Delete an entry from the given index that is indicated by the given ixFileHandle.
         RC deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid);
 
-        // Initialize and IX_ScanIterator to support a range search
+        RC findTargetLeafNode(IXFileHandle &ixFileHandle, uint32_t& targetLeaf, const uint8_t* key, const Attribute& attr);
+            // Initialize and IX_ScanIterator to support a range search
         RC scan(IXFileHandle &ixFileHandle,
                 const Attribute &attribute,
                 const void *lowKey,
@@ -185,13 +186,33 @@ namespace PeterDB {
 
     class IX_ScanIterator {
     public:
+        IXFileHandle* ixFileHandle;
+        Attribute attr;
+        const uint8_t* lowKey;
+        bool lowKeyInclusive;
+        const uint8_t* highKey;
+        bool highKeyInclusive;
+
+        uint32_t curLeafPage;
+        int16_t remainDataLen;
+        bool entryExceedUpperBound;
 
         // Constructor
-        IX_ScanIterator();
+        IX_ScanIterator(){
+            lowKey = nullptr;
+            highKey = nullptr;
+            curLeafPage = IX::NULL_PTR;
+            remainDataLen = 0;
+            entryExceedUpperBound = false;
+        };
 
         // Destructor
-        ~IX_ScanIterator();
+        ~IX_ScanIterator() = default;
 
+        RC open(IXFileHandle* fileHandle, const Attribute& attr, const uint8_t* lowKey,
+                                 const uint8_t* highKey, bool lowKeyInclusive, bool highKeyInclusive);
+
+        RC getNextNonEmptyPage();
         // Get next matching entry
         RC getNextEntry(RID &rid, void *key);
 
@@ -391,7 +412,7 @@ namespace PeterDB {
         RC getTargetChild(leafEntry *key, const Attribute &attr, int32_t & childPage);
         // start from first key
         RC
-        findPosToInsertKey(internalEntry *firstLargerKey, leafEntry *key, const Attribute &attr);
+        findPosToInsertKey(internalEntry *firstGEEntry, leafEntry *key, const Attribute &attr);
 
         RC
         findPosToInsertKey(int16_t& curPos, internalEntry *key, const Attribute &attr);
@@ -463,8 +484,7 @@ namespace PeterDB {
                    IX::NEXT_POINTER_LEN;
         }
 
-        leafEntry * getEntry(int i, const Attribute &attribute);
-
+        RC getEntry(int16_t pos, leafEntry* leaf);
         //setter
         void setNextPtr(int32_t ptr) {
             memcpy(data + PAGE_SIZE - IX::NODE_TYPE_LEN - IX::FREEBYTEPOINTER_LEN - IX::KEY_COUNTER_LEN -
@@ -480,6 +500,10 @@ namespace PeterDB {
         internalEntry* splitNode(leafEntry *key, const Attribute &attr);
 
         static bool isKeyMeetCompCondition(leafEntry *key1, leafEntry *key2, const Attribute& attr, const CompOp op);
+
+        RC findFirstKeyMeetCompCondition(int16_t& pos, const uint8_t* key, const Attribute& attr, CompOp op);
+
+        bool isEmpty(){ return keyCounter == 0;}
     };
 }// namespace PeterDB
 #endif // _ix_h_

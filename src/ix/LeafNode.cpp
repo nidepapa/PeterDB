@@ -4,7 +4,7 @@
 
 #include "src/include/ix.h"
 
-namespace PeterDB{
+namespace PeterDB {
     RC LeafNode::writeEntry(leafEntry *key, const Attribute &attribute, int16_t pos) {
         memcpy(data + pos, (uint8_t *) key, key->getEntryLength(attribute.type));
         return SUCCESS;
@@ -124,25 +124,26 @@ namespace PeterDB{
             }
         } else {
             // new entry into L2
-            if (getFreeBytePointer() - moveStartPos +key->getEntryLength(attr.type) > getMaxFreeSpace()) {
+            if (getFreeBytePointer() - moveStartPos + key->getEntryLength(attr.type) > getMaxFreeSpace()) {
                 isSplitFeasible = false;
                 moveStartIndex++;
             }
         }
 
-        if(!isSplitFeasible) {
+        if (!isSplitFeasible) {
             moveStartPos = 0;
-            for(int16_t i = 0; i < moveStartIndex; i++) {
+            for (int16_t i = 0; i < moveStartIndex; i++) {
                 moveStartPos += ((leafEntry *) (data + moveStartPos))->getEntryLength(attr.type);
             }
         }
 
         // move the data from moveStartPos to L2
         int16_t moveLen = getFreeBytePointer() - moveStartPos;
-        LeafNode leaf2(data + moveStartPos, moveLen, ixFileHandle, leaf2Page, getNextPtr(),getkeyCounter() - moveStartIndex);
+        LeafNode leaf2(data + moveStartPos, moveLen, ixFileHandle, leaf2Page, getNextPtr(),
+                       getkeyCounter() - moveStartIndex);
 
         // Compact old page and maintain metadata
-        setFreeBytePointer(getFreeBytePointer()-  moveLen);
+        setFreeBytePointer(getFreeBytePointer() - moveLen);
         setkeyCounter(moveStartIndex);
 
         // Insert new leaf page into the leaf page linked list
@@ -151,11 +152,10 @@ namespace PeterDB{
 
         // Insert new entry into old page or new page
         curKey = (leafEntry *) (data + moveStartPos);
-        if(isKeyMeetCompCondition(key, curKey, attr, CompOp::LT_OP)) {
+        if (isKeyMeetCompCondition(key, curKey, attr, CompOp::LT_OP)) {
             ret = insertEntry(key, attr);
             assert(ret == SUCCESS);
-        }
-        else {
+        } else {
             ret = leaf2.insertEntry(key, attr);
             assert(ret == SUCCESS);
         }
@@ -163,20 +163,33 @@ namespace PeterDB{
         // generate new middle key to copy up
         // newchildentry = & (smallest key value on L2, pointer to L2)
         uint8_t buffer[PAGE_SIZE];
-        auto middleKey = (internalEntry*)buffer;
-        middleKey->setKey(attr.type, leaf2.getEntry(0, attr)->getKeyPtr<uint8_t>());
+        auto middleKey = (internalEntry *) buffer;
+        uint8_t buffer2[PAGE_SIZE];
+        auto entry = (leafEntry*)buffer2;
+        leaf2.getEntry(0, entry);
+        middleKey->setKey(attr.type, entry->getKeyPtr<uint8_t>());
         middleKey->setRightChild(attr.type, leaf2Page);
         return middleKey;
     }
 
-    leafEntry *LeafNode::getEntry(int i, const Attribute &attribute) {
-        assert(i < getkeyCounter());
-        int16_t pos;
-        auto entry = (leafEntry *) data;
-        for (int j = 0; j < i; j++) {
-            entry = entry->getNextEntry(attribute.type);
-        }
-        return entry;
+    RC LeafNode::getEntry(int16_t pos, leafEntry *leaf) {
+        assert(pos < getFreeBytePointer());
+        leaf = (leafEntry *) (data + pos);
+        return SUCCESS;
     }
+
+    RC LeafNode::findFirstKeyMeetCompCondition(int16_t &pos, const uint8_t *key, const Attribute &attr, CompOp op) {
+        pos = 0;
+        auto entry = (leafEntry *) data;
+        for (int16_t index = 0; index < keyCounter; index++) {
+            if (isKeyMeetCompCondition(entry, (leafEntry *) key, attr, op)) {
+                break;
+            }
+            pos += entry->getEntryLength(attr.type);
+            entry = entry->getNextEntry(attr.type);
+        }
+        return SUCCESS;
+    }
+
 
 }

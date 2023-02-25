@@ -68,7 +68,7 @@ namespace PeterDB {
         FILE_NOT_OPEN,
         FILE_NO_ENOUGH_PAGE,
         FILE_READ_ONE_PAGE_FAIL,
-        ROOT_PAGE_NOT_EXIST,
+        ROOT_NOT_EXIST,
         FILE_EXIST,
         FILE_NOT_EXIST,
         FILE_DELETE_FAIL,
@@ -78,6 +78,7 @@ namespace PeterDB {
         NOLEAF_GETTARGET_CHILD_FAIL,
         NOLEAF_INSERT_ENTRY_FAIL,
         NOLEAF_SPLIT_FAIL,
+        LEAF_FOUND_FAIL,
         };
 }
 

@@ -74,6 +74,10 @@ namespace PeterDB {
         FILE_DELETE_FAIL,
         PAGE_NO_ENOUGH_SPACE,
         FREEBYTE_EXCEEDED,
+        LEAF_INSERT_ENTRY_FAIL,
+        NOLEAF_GETTARGET_CHILD_FAIL,
+        NOLEAF_INSERT_ENTRY_FAIL,
+        NOLEAF_SPLIT_FAIL,
         };
 }
 

@@ -43,6 +43,16 @@ namespace PeterDB {
             return getKeyLength(type) + sizeof(int32_t);
         }
 
+        template <typename T>
+        T* getKeyPtr() const {
+            return (T *)(uint8_t*)this;
+        }
+
+        template <typename T>
+        T getKey() const {
+            return *getKeyPtr<T>();
+        }
+
         int32_t getLeftChild() {
             int32_t ptr;
             memcpy(&ptr, (uint8_t *) this - IX::NEXT_POINTER_LEN, IX::NEXT_POINTER_LEN);
@@ -113,6 +123,13 @@ namespace PeterDB {
             memcpy((uint8_t *) this + getKeyLength(type) + sizeof(uint32_t), &slotNum, sizeof(uint16_t));
         }
     };
+    template <>
+    inline std::string internalEntry::getKey() const {
+        auto *size = (int32_t *)this;
+        char* data = (char*)(size + 1);
+        return std::string(data, *size);
+    }
+
     template <>
     inline std::string leafEntry::getKey() const {
         auto *size = (int32_t *)this;
@@ -336,26 +353,28 @@ namespace PeterDB {
         RC shiftDataLeft(int16_t dataNeedShiftStartPos, int16_t dist);
 
         RC shiftDataRight(int16_t dataNeedMoveStartPos, int16_t dist);
+
+        bool isRoot(){
+            if (getPageNum() == ixFileHandle.getRoot())return true;
+            return false;
+        }
     };
 
     class InternalNode : public IXNode {
+    public:
         // Open existed page
         InternalNode(IXFileHandle &ixfileHandle, uint32_t page) : IXNode(ixfileHandle, page) {};
 
         // Initialize new page containing one entry
         InternalNode(IXFileHandle &ixfileHandle, uint32_t page, uint32_t leftPage, internalEntry *key,
-                     uint32_t rightPage,
                      const Attribute &attr) : IXNode(ixfileHandle, page, IX::INTERNAL_NODE, 0, 1) {
             int16_t pos = 0;
             // Write left page pointer
             memcpy(data + pos, &leftPage, IX::NEXT_POINTER_LEN);
             pos += IX::NEXT_POINTER_LEN;
-            int16_t keyLen = key->getKeyLength(attr.type);
-            memcpy(data + pos, (uint8_t *) key, keyLen);
-            pos += keyLen;
-            // Write right page pointer
-            memcpy(data + pos, &rightPage, IX::NEXT_POINTER_LEN);
-            pos += IX::NEXT_POINTER_LEN;
+            int16_t entryLen = key->getEntryLength(attr.type);
+            memcpy(data + pos, (uint8_t *) key, entryLen);
+            pos += entryLen;
 
             setFreeBytePointer(pos);
             setkeyCounter(1);
@@ -369,20 +388,19 @@ namespace PeterDB {
         ~InternalNode() = default;
 
         // Get target child page, if not exist, append one
-        RC getTargetChild(uint32_t &childPtr, const uint8_t *key, const RID &rid, const Attribute &attr);
+        RC getTargetChild(leafEntry *key, const Attribute &attr, int32_t & childPage);
+        // start from first key
+        RC
+        findPosToInsertKey(internalEntry *firstLargerKey, leafEntry *key, const Attribute &attr);
 
         RC
-        findPosToInsertKey(int16_t &curPos, const uint8_t *keyToInsert, const RID &ridToInsert, const Attribute &attr);
+        findPosToInsertKey(int16_t& curPos, internalEntry *key, const Attribute &attr);
 
-        RC insertIndex(uint8_t *middleKey, uint32_t &newChildPage, bool &isNewChildExist, const uint8_t *keyToInsert,
-                       const RID &ridToInsert, const Attribute &attr, uint32_t childPtrToInsert);
+        RC insertEntry(internalEntry* key, const Attribute &attr);
 
-        RC insertIndexWithEnoughSpace(const uint8_t *key, const RID &rid, const Attribute &attr, uint32_t childPage);
+        RC writeEntry(internalEntry *key, const Attribute &attribute, int16_t pos);
 
-        RC writeIndex(int16_t pos, const uint8_t *key, const RID &rid, const Attribute &attr, uint32_t newPageNum);
-
-        RC splitPageAndInsertIndex(uint8_t *middleCompKey, uint32_t &newIndexPage, const uint8_t *keyToInsert,
-                                   const RID &ridToInsert, const Attribute &attr, uint32_t childPtrToInsert);
+        RC splitPageAndInsertIndex(internalEntry *key, const Attribute &attr, internalEntry *newChildEntry);
 
         RC print(const Attribute &attr, std::ostream &out);
 
@@ -392,6 +410,9 @@ namespace PeterDB {
             return PAGE_SIZE - freeBytePointer - IX::NODE_TYPE_LEN - IX::FREEBYTEPOINTER_LEN - IX::KEY_COUNTER_LEN -
                    IX::NEXT_POINTER_LEN;
         }
+
+        static bool isKeyMeetCompCondition(internalEntry *key1, leafEntry *key2, const Attribute& attr, const CompOp op);
+        static bool isKeyMeetCompCondition(internalEntry *key1, internalEntry *key2, const Attribute& attr, const CompOp op);
     };
 
     class LeafNode : public IXNode {

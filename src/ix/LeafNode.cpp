@@ -191,5 +191,93 @@ namespace PeterDB {
         return SUCCESS;
     }
 
+    RC LeafNode::deleteEntry(leafEntry *key, const Attribute& attr){
+        RC ret = 0;
+        int16_t slotPos = 0;
+        findFirstKeyMeetCompCondition(slotPos, (uint8_t *)key, attr, EQ_OP);
+        if(slotPos >= getFreeBytePointer()) {
+            return RC(IX_ERROR::LEAF_ENTRY_NOT_EXIST);
+        }
+        int16_t dataNeedMovePos = slotPos + key->getEntryLength(attr.type);
+        if(dataNeedMovePos < getFreeBytePointer()) {
+            shiftDataLeft(dataNeedMovePos, key->getEntryLength(attr.type));
+        }
+        setFreeBytePointer(getFreeBytePointer() - key->getEntryLength(attr.type));
+        setkeyCounter(getkeyCounter() - 1);
+        return SUCCESS;
+    }
 
+    RC LeafNode::print(const Attribute &attr, std::ostream &out) {
+        out << "{\"keys\": [";
+        uint32_t pageNum;
+        uint16_t slotNum;
+
+        auto curEntry = (leafEntry *)data;
+        int32_t curInt;
+        float curFloat;
+        std::string curStr;
+
+        int16_t i = 0;
+        while(i < getkeyCounter()) {
+            out << "\"";
+            // Print Key
+            switch (attr.type) {
+                case TypeInt:
+                    curInt = curEntry->getKey<int32_t>();
+                    out << curInt << ":[";
+                    break;
+                case TypeReal:
+                    curFloat = curEntry->getKey<float>();
+                    out << curFloat << ":[";
+                    break;
+                case TypeVarChar:
+                    curStr = curEntry->getKey<std::string>();
+                    out << curStr << ":[";
+                    break;
+                default:
+                    return RC(IX_ERROR::KEY_TYPE_INVALID);
+            }
+            // Print following Rid with the same key
+            while(i < getkeyCounter()) {
+                curEntry->getRID(attr.type, pageNum, slotNum);
+                out << "(" << pageNum << "," << slotNum <<")";
+                i++;
+
+                if(i >= getkeyCounter()) {
+                    break;
+                }
+                auto sameKeyEntry = curEntry->getNextEntry(attr.type);
+                bool isKeySame = true;
+                switch (attr.type) {
+                    case TypeInt:
+                        if(sameKeyEntry->getKey<int32_t>() != curInt)
+                            isKeySame = false;
+                        break;
+                    case TypeReal:
+                        if(sameKeyEntry->getKey<float>() != curFloat)
+                            isKeySame = false;
+                        break;
+                    case TypeVarChar:
+                        if(sameKeyEntry->getKey<std::string>() != curStr)
+                            isKeySame = false;
+                        break;
+                    default:
+                        return RC(IX_ERROR::KEY_TYPE_INVALID);
+                }
+                if(!isKeySame) {
+                    break;
+                }
+                curEntry = sameKeyEntry;
+
+                out << ",";
+            }
+            out << "]\"";
+
+            if(i < getkeyCounter()) {
+                out << ",";
+            }
+        }
+        out << "]}";
+        return 0;
+    }
 }

@@ -292,4 +292,68 @@ namespace PeterDB {
         memcpy(data + pos, (uint8_t *) key, key->getEntryLength(attribute.type));
         return SUCCESS;
     }
+
+    RC InternalNode::print(const Attribute &attr, std::ostream &out) {
+        // 1. Keys
+        out << "{\"keys\": [";
+        std::queue<int> children;
+        int16_t offset = 0;
+        uint32_t child;
+        for(int16_t i = 0; i < getkeyCounter(); i++) {
+            memcpy(&child, data + offset, IX::NEXT_POINTER_LEN);
+            children.push(child);
+            offset += IX::NEXT_POINTER_LEN;
+            out << "\"";
+            auto entry = (internalEntry*)(data + offset);
+            switch (attr.type) {
+                case TypeInt:
+                    out << entry->getKey<int32_t>();
+                    break;
+                case TypeReal:
+                    out << entry->getKey<float>();
+                    break;
+                case TypeVarChar:
+                    out << entry->getKey<std::string>();
+                    break;
+                default:
+                    return RC(IX_ERROR::KEY_TYPE_INVALID);
+            }
+            offset += entry->getKeyLength(attr.type);
+            out << "\"";
+            if(i != getkeyCounter() - 1) {
+                out << ",";
+            }
+        }
+        // Last Child
+        memcpy(&child, data + offset, IX::NEXT_POINTER_LEN);
+        if(child == IX::NULL_PTR) {
+            return RC(IX_ERROR::INDEXPAGE_LAST_CHILD_NOT_EXIST);
+        }
+        children.push(child);
+        out << "]," << std::endl;
+        // 2. Children
+        out << "\"children\": [" << std::endl;
+        while(!children.empty()) {
+            int16_t nodeType;
+            {
+                IXNode node(ixFileHandle, children.front());
+                nodeType = node.getNodeType();
+            }
+            if(nodeType == IX::INTERNAL_NODE) {
+                InternalNode internal(ixFileHandle, children.front());
+                internal.print(attr, out);
+            }
+            else if(nodeType == IX::LEAF_NODE) {
+                LeafNode leaf(ixFileHandle, children.front());
+                leaf.print(attr, out);
+            }
+            children.pop();
+            if(!children.empty()) {
+                out << ",";
+            }
+            out << std::endl;
+        }
+        out << "]}";
+        return 0;
+    }
 }

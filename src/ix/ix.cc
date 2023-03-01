@@ -66,7 +66,21 @@ namespace PeterDB {
 
     RC
     IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
-        return -1;
+        RC ret = 0;
+
+        if(ixFileHandle.isRootNull()) return RC(IX_ERROR::ROOT_NOT_EXIST);
+
+        uint32_t leafPage;
+        ret = findTargetLeafNode(ixFileHandle, leafPage, (uint8_t *)key, attribute);
+        if(ret) return ret;
+        LeafNode leaf(ixFileHandle, leafPage);
+        uint8_t buffer[PAGE_SIZE];
+        auto entryToDel = (leafEntry*) buffer;
+        entryToDel->setKey(attribute.type, (uint8_t*)key);
+        entryToDel->setRID(attribute.type, rid.pageNum, rid.slotNum);
+        ret = leaf.deleteEntry(entryToDel, attribute);
+        if(ret) return ret;
+        return SUCCESS;
     }
 
     RC IndexManager::scan(IXFileHandle &ixFileHandle,
@@ -83,6 +97,26 @@ namespace PeterDB {
     }
 
     RC IndexManager::printBTree(IXFileHandle &ixFileHandle, const Attribute &attribute, std::ostream &out) const {
+        RC ret = 0;
+        if(ixFileHandle.isRootNull()) return RC(IX_ERROR::ROOT_NOT_EXIST);
+        int16_t nodeType;
+        {
+            IXNode node(ixFileHandle, ixFileHandle.getRoot());
+            nodeType = node.getNodeType();
+        }
+
+        if(nodeType == IX::INTERNAL_NODE) {
+            InternalNode internal(ixFileHandle, ixFileHandle.getRoot());
+            internal.print(attribute, out);
+        }
+        else if(nodeType == IX::LEAF_NODE) {
+            LeafNode leaf(ixFileHandle, ixFileHandle.getRoot());
+            leaf.print(attribute, out);
+        }
+        else {
+            return RC(IX_ERROR::PAGE_TYPE_UNKNOWN);
+        }
+        return 0;
     }
 
     bool IndexManager::isFileExists(const std::string fileName) {
@@ -173,4 +207,32 @@ namespace PeterDB {
         return SUCCESS;
     }
 
+    RC IXNode::shiftDataLeft(int16_t dataNeedShiftStartPos, int16_t dist) {
+        int16_t dataNeedMoveLen = getFreeBytePointer() - dataNeedShiftStartPos;
+        if(dataNeedMoveLen < 0) {
+            return RC(IX_ERROR::MOVE_FAIL);
+        }
+        if(dataNeedMoveLen == 0) {
+            return 0;
+        }
+
+        // Must Use Memmove! Source and Destination May Overlap
+        memmove(data + dataNeedShiftStartPos - dist, data + dataNeedShiftStartPos, dataNeedMoveLen);
+
+        return 0;
+    }
+
+    RC IXNode::shiftDataRight(int16_t dataNeedMoveStartPos, int16_t dist) {
+        int16_t dataNeedMoveLen = getFreeBytePointer() - dataNeedMoveStartPos;
+        if(dataNeedMoveLen < 0) {
+            return RC(IX_ERROR::MOVE_FAIL);
+        }
+        if(dataNeedMoveLen == 0) {
+            return 0;
+        }
+        // Must Use Memmove! Source and Destination May Overlap
+        memmove(data + dataNeedMoveStartPos + dist, data + dataNeedMoveStartPos, dataNeedMoveLen);
+
+        return 0;
+    }
 } // namespace PeterDB

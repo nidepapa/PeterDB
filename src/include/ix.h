@@ -3,10 +3,10 @@
 
 #include <vector>
 #include <string>
+#include <queue>
 
 #include "pfm.h"
 #include "rbfm.h" // for some type declarations only, e.g., RID and Attribute
-
 # define IX_EOF (-1)  // end of the index scan
 
 namespace PeterDB {
@@ -497,6 +497,8 @@ namespace PeterDB {
 
         RC insertEntry(leafEntry *key, const Attribute &attribute);
 
+        RC deleteEntry(leafEntry *key, const Attribute& attr);
+
         internalEntry* splitNode(leafEntry *key, const Attribute &attr);
 
         static bool isKeyMeetCompCondition(leafEntry *key1, leafEntry *key2, const Attribute& attr, const CompOp op);
@@ -504,6 +506,8 @@ namespace PeterDB {
         RC findFirstKeyMeetCompCondition(int16_t& pos, const uint8_t* key, const Attribute& attr, CompOp op);
 
         bool isEmpty(){ return keyCounter == 0;}
+
+        RC print(const Attribute &attr, std::ostream &out);
     };
 }// namespace PeterDB
 #endif // _ix_h_

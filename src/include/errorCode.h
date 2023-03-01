@@ -79,6 +79,11 @@ namespace PeterDB {
         NOLEAF_INSERT_ENTRY_FAIL,
         NOLEAF_SPLIT_FAIL,
         LEAF_FOUND_FAIL,
+        LEAF_ENTRY_NOT_EXIST,
+        KEY_TYPE_INVALID,
+        INDEXPAGE_LAST_CHILD_NOT_EXIST,
+        PAGE_TYPE_UNKNOWN,
+        MOVE_FAIL,
         };
 }
 

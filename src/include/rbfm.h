@@ -5,6 +5,7 @@
 #include <unordered_set>
 
 #include "pfm.h"
+#include <iostream>
 
 namespace PeterDB {
     // Record ID

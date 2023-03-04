@@ -5,6 +5,7 @@
 #include <string>
 #include <queue>
 #include <cstring>
+#include<cassert>
 
 #include "pfm.h"
 #include "rbfm.h" // for some type declarations only, e.g., RID and Attribute

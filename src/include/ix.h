@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <queue>
+#include <cstring>
 
 #include "pfm.h"
 #include "rbfm.h" // for some type declarations only, e.g., RID and Attribute

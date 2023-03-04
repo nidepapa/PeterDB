@@ -21,6 +21,7 @@ namespace PeterDB {
         if (ixFileHandle->isRootNull()) {
             return RC(IX_ERROR::ROOT_NOT_EXIST);
         }
+        curLeafPage = ixFileHandle->getRoot();
         // Find the right leaf node (right close to the key) to start scanning
         ret = IndexManager::instance().findTargetLeafNode(*ixFileHandle, curLeafPage, lowKey, attr);
         if (ret) return ret;
@@ -60,18 +61,19 @@ namespace PeterDB {
         // Read current entry and check if it meets condition
         LeafNode leaf(*ixFileHandle, curLeafPage);
         uint8_t buffer[PAGE_SIZE];
+        memset(buffer, 0, PAGE_SIZE);
         auto entry = (leafEntry *) buffer;
-        ret = leaf.getEntry(leaf.getFreeBytePointer() - remainDataLen, entry);
+        ret = leaf.getEntry(leaf.getFreeBytePointer() - remainDataLen, entry,attr);
         if (ret) return IX_EOF;
 
         // Check if current entry exceed upper bound
         if(highKey && highKeyInclusive &&
-           leaf.isKeyMeetCompCondition(entry, (leafEntry*)highKey, attr, GT_OP)) {
+           leaf.isKeyMeetCompCondition((uint8_t*)entry,highKey, attr, GT_OP)) {
             entryExceedUpperBound = true;
             return IX_EOF;
         }
         if(highKey && !highKeyInclusive &&
-           leaf.isKeyMeetCompCondition(entry, (leafEntry*)highKey, attr, GE_OP)) {
+           leaf.isKeyMeetCompCondition((uint8_t*)entry, highKey, attr, GE_OP)) {
             entryExceedUpperBound = true;
             return IX_EOF;
         }
@@ -83,7 +85,7 @@ namespace PeterDB {
             curLeafPage = leaf.getNextPtr();
             getNextNonEmptyPage();
         }
-        key = entry->getKeyPtr<uint8_t>();
+        memcpy(key, entry->getKeyPtr<uint8_t>(), entry->getKeyLength(attr.type));
         entry->getRID(attr.type, rid.pageNum, rid.slotNum);
 
         return SUCCESS;

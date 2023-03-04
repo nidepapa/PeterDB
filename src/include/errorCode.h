@@ -84,6 +84,7 @@ namespace PeterDB {
         INDEXPAGE_LAST_CHILD_NOT_EXIST,
         PAGE_TYPE_UNKNOWN,
         MOVE_FAIL,
+        LEAF_SPLIT_ENTRY_FAIL,
         };
 }
 

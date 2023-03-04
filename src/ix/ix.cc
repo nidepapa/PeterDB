@@ -39,28 +39,33 @@ namespace PeterDB {
 
     RC
     IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
-        if (!ixFileHandle.isOpen()) return RC(IX_ERROR::FILE_NOT_OPEN);
+        if (!ixFileHandle.isOpen()) {
+            auto name = ixFileHandle.getFileName();
+            if (name == "") return RC(IX_ERROR::FILE_NOT_EXIST);
+            ixFileHandle.open(name);
+        }
 
         uint8_t data[PAGE_SIZE];
         auto entry = (leafEntry *) data;
         entry->setKey(attribute.type, (uint8_t *) key);
         entry->setRID(attribute.type, rid.pageNum, rid.slotNum);
         assert(entry->getKeyLength(attribute.type) == attribute.length);
-
         if (ixFileHandle.isRootNull()) {
-            RC ret = ixFileHandle.appendEmptyPage();
+            RC ret = ixFileHandle.createRootPage();
             assert(ret == 0);
-            uint32_t leafPage = ixFileHandle.getLastPageIndex();
-            LeafNode LeafNode(ixFileHandle, leafPage, IX::NEXT_POINTER_NULL);
+            uint32_t rootPage = ixFileHandle.getRoot();
+            LeafNode LeafNode(ixFileHandle, rootPage, IX::NULL_PTR);
+
             ret = LeafNode.insertEntry(entry, attribute);
             assert(ret == 0);
-            ixFileHandle.setRoot(leafPage);
             return SUCCESS;
         }
 
-        internalEntry *newChildEntry = nullptr;
-        RC ret = insertEntryRecur(ixFileHandle, ixFileHandle.getRoot(), entry, newChildEntry, attribute);
-        assert(ret == 0);
+        uint8_t buffer[PAGE_SIZE];
+        auto newChildEntry = (internalEntry*)buffer;
+        bool isNewChildExist = false;
+        RC ret = insertEntryRecur(ixFileHandle, ixFileHandle.getRoot(), entry, newChildEntry, isNewChildExist, attribute);
+        if(ret) return ret;
         return SUCCESS;
     }
 
@@ -68,18 +73,19 @@ namespace PeterDB {
     IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
         RC ret = 0;
 
-        if(ixFileHandle.isRootNull()) return RC(IX_ERROR::ROOT_NOT_EXIST);
+        if (ixFileHandle.isRootNull()) return RC(IX_ERROR::ROOT_NOT_EXIST);
 
-        uint32_t leafPage;
-        ret = findTargetLeafNode(ixFileHandle, leafPage, (uint8_t *)key, attribute);
-        if(ret) return ret;
+        int32_t leafPage;
+        ret = findTargetLeafNode(ixFileHandle, leafPage, (uint8_t *) key, attribute);
+        if (ret) return ret;
         LeafNode leaf(ixFileHandle, leafPage);
         uint8_t buffer[PAGE_SIZE];
-        auto entryToDel = (leafEntry*) buffer;
-        entryToDel->setKey(attribute.type, (uint8_t*)key);
+        memset(buffer, 0 , PAGE_SIZE);
+        auto entryToDel = (leafEntry *) buffer;
+        entryToDel->setKey(attribute.type, (uint8_t *) key);
         entryToDel->setRID(attribute.type, rid.pageNum, rid.slotNum);
         ret = leaf.deleteEntry(entryToDel, attribute);
-        if(ret) return ret;
+        if (ret) return ret;
         return SUCCESS;
     }
 
@@ -91,29 +97,28 @@ namespace PeterDB {
                           bool highKeyInclusive,
                           IX_ScanIterator &ix_ScanIterator) {
         RC ret = 0;
-        ret = ix_ScanIterator.open(&ixFileHandle, attribute, (uint8_t*)lowKey, (uint8_t*)highKey, lowKeyInclusive, highKeyInclusive);
-        if(ret) return ret;
+        ret = ix_ScanIterator.open(&ixFileHandle, attribute, (uint8_t *) lowKey, (uint8_t *) highKey, lowKeyInclusive,
+                                   highKeyInclusive);
+        if (ret) return ret;
         return SUCCESS;
     }
 
     RC IndexManager::printBTree(IXFileHandle &ixFileHandle, const Attribute &attribute, std::ostream &out) const {
         RC ret = 0;
-        if(ixFileHandle.isRootNull()) return RC(IX_ERROR::ROOT_NOT_EXIST);
+        if (ixFileHandle.isRootNull()) return RC(IX_ERROR::ROOT_NOT_EXIST);
         int16_t nodeType;
         {
             IXNode node(ixFileHandle, ixFileHandle.getRoot());
             nodeType = node.getNodeType();
         }
 
-        if(nodeType == IX::INTERNAL_NODE) {
+        if (nodeType == IX::INTERNAL_NODE) {
             InternalNode internal(ixFileHandle, ixFileHandle.getRoot());
             internal.print(attribute, out);
-        }
-        else if(nodeType == IX::LEAF_NODE) {
+        } else if (nodeType == IX::LEAF_NODE) {
             LeafNode leaf(ixFileHandle, ixFileHandle.getRoot());
             leaf.print(attribute, out);
-        }
-        else {
+        } else {
             return RC(IX_ERROR::PAGE_TYPE_UNKNOWN);
         }
         return 0;
@@ -127,7 +132,7 @@ namespace PeterDB {
     }
 
     RC IndexManager::insertEntryRecur(IXFileHandle &ixFileHandle, int32_t nodePointer, leafEntry *entry,
-                                      internalEntry *newChildEntry, const Attribute &attribute) {
+                                      internalEntry *newChildEntry, bool &isNewChildExist, const Attribute &attribute) {
         RC ret;
         IXNode ixnode(ixFileHandle, nodePointer);
 
@@ -138,81 +143,68 @@ namespace PeterDB {
             int32_t subtree = IX::NULL_PTR;
             ret = noLeaf.getTargetChild(entry, attribute, subtree);
             if (ret) return RC(IX_ERROR::NOLEAF_GETTARGET_CHILD_FAIL);
-            ret = insertEntryRecur(ixFileHandle, subtree, entry, newChildEntry,attribute);
-            assert(ret == SUCCESS);
-            if (newChildEntry == nullptr) return SUCCESS;
-            else{
-                // we split child, must insert *newchildentry in N
-                if (noLeaf.getFreeSpace() > newChildEntry->getEntryLength(attribute.type)){
-                    ret = noLeaf.insertEntry(newChildEntry, attribute);
-                    if (ret) return RC(IX_ERROR::NOLEAF_INSERT_ENTRY_FAIL);
-                    newChildEntry = nullptr;
-                    return SUCCESS;
-                }else{
-                    // we split child
-                    ret = noLeaf.splitPageAndInsertIndex(newChildEntry, attribute, newChildEntry);
-                    if (ret) return RC(IX_ERROR::NOLEAF_SPLIT_FAIL);
-                    if (noLeaf.isRoot()){
-                        RC ret = ixFileHandle.appendEmptyPage();
-                        assert(ret = SUCCESS);
-                        auto newRootPage = ixFileHandle.getLastPageIndex();
-                        InternalNode newRoot(ixFileHandle, newRootPage, noLeaf.getPageNum(),newChildEntry,attribute);
-                        ixFileHandle.setRoot(newRootPage);
-                    }
-                    return SUCCESS;
-                }
+            ret = insertEntryRecur(ixFileHandle, subtree, entry, newChildEntry,isNewChildExist, attribute);
+            if(ret) return ret;
+            if (!isNewChildExist) return SUCCESS;
+            else {
+                // Insert <returned middle composite key, new child page pointer> into current index page
+                int16_t entryLen = newChildEntry->getEntryLength(attribute.type);
+                uint8_t tmpEntry[entryLen];
+                memcpy(tmpEntry, newChildEntry, entryLen);
+                ret = noLeaf.splitOrInsertNode((internalEntry*)tmpEntry, attribute, newChildEntry, isNewChildExist);
+                if(ret) return ret;
             }
-        }
-        else if (ixnode.getNodeType() == IX::LEAF_NODE) {
+        } else if (ixnode.getNodeType() == IX::LEAF_NODE) {
             // LEAF NODE L
             LeafNode leaf(ixFileHandle, nodePointer);
-            // if L has space,
-            if (leaf.getFreeSpace() > entry->getEntryLength(attribute.type)) {
-                ret = leaf.insertEntry(entry, attribute);
-                if (ret) return RC(IX_ERROR::LEAF_INSERT_ENTRY_FAIL);
-                newChildEntry = nullptr;
-                return SUCCESS;
-            } else {
-                // todo change to RC mode;
-                // split L: first d entries stay, rest move to brand new node L2;
-                newChildEntry = leaf.splitNode(entry, attribute);
-                return SUCCESS;
-            }
+            ret = leaf.insertOrSplitEntry(entry, attribute, newChildEntry, isNewChildExist);
+            if (ret) return ret;
+            // Corner Case: Leaf node needs to split and there isn't any no-leaf page yet
+            if (isNewChildExist && leaf.getPageNum() == ixFileHandle.getRoot()) {
+                // Insert new no-leaf page
+                ret = ixFileHandle.appendEmptyPage();
+                if(ret) return ret;
+                uint32_t newInternalPageNum = ixFileHandle.getLastPageIndex();
 
+                InternalNode newInternal(ixFileHandle, newInternalPageNum,
+                                         nodePointer, newChildEntry, attribute);
+                ixFileHandle.setRoot(newInternalPageNum);
+                isNewChildExist = false;
+            }
         }
         return SUCCESS;
     }
 
-    RC IndexManager::findTargetLeafNode(IXFileHandle &ixFileHandle, uint32_t &targetLeaf, const uint8_t *key,
+    RC IndexManager::findTargetLeafNode(IXFileHandle &ixFileHandle, int32_t &targetLeaf, const uint8_t *key,
                                         const Attribute &attr) {
         RC ret = 0;
-        if(ixFileHandle.isRootNull()) return RC(IX_ERROR::ROOT_NOT_EXIST);
+        if (ixFileHandle.isRootNull()) return RC(IX_ERROR::ROOT_NOT_EXIST);
 
         int32_t curPageNum = ixFileHandle.getRoot();
-        while(curPageNum != IX::NULL_PTR && curPageNum < ixFileHandle.getNumberOfPages()) {
+        while (curPageNum != IX::NULL_PTR && curPageNum < ixFileHandle.getNumberOfPages()) {
             IXNode node(ixFileHandle, curPageNum);
-            if (node.getNodeType() == IX::LEAF_NODE){
+            if (node.getNodeType() == IX::LEAF_NODE) {
                 //*nodepointer is a leaf, return nodepointer
                 break;
             }else if(node.getNodeType() == IX::INTERNAL_NODE){
                 InternalNode internal(ixFileHandle, curPageNum);
-                ret = internal.getTargetChild((leafEntry*)key, attr,curPageNum);
+                ret = internal.getTargetChild((leafEntry *) key, attr, curPageNum);
                 if (ret) return ret;
             }
         }
-        if(curPageNum != IX::NULL_PTR && curPageNum < ixFileHandle.getNumberOfPages()) {
+        if (curPageNum != IX::NULL_PTR && curPageNum < ixFileHandle.getNumberOfPages()) {
             targetLeaf = curPageNum;
-        }else{return RC(IX_ERROR::LEAF_FOUND_FAIL);}
+        } else { return RC(IX_ERROR::LEAF_FOUND_FAIL); }
 
         return SUCCESS;
     }
 
     RC IXNode::shiftDataLeft(int16_t dataNeedShiftStartPos, int16_t dist) {
         int16_t dataNeedMoveLen = getFreeBytePointer() - dataNeedShiftStartPos;
-        if(dataNeedMoveLen < 0) {
+        if (dataNeedMoveLen < 0) {
             return RC(IX_ERROR::MOVE_FAIL);
         }
-        if(dataNeedMoveLen == 0) {
+        if (dataNeedMoveLen == 0) {
             return 0;
         }
 
@@ -224,10 +216,10 @@ namespace PeterDB {
 
     RC IXNode::shiftDataRight(int16_t dataNeedMoveStartPos, int16_t dist) {
         int16_t dataNeedMoveLen = getFreeBytePointer() - dataNeedMoveStartPos;
-        if(dataNeedMoveLen < 0) {
+        if (dataNeedMoveLen < 0) {
             return RC(IX_ERROR::MOVE_FAIL);
         }
-        if(dataNeedMoveLen == 0) {
+        if (dataNeedMoveLen == 0) {
             return 0;
         }
         // Must Use Memmove! Source and Destination May Overlap

@@ -12,13 +12,13 @@ namespace PeterDB {
 
     RC LeafNode::insertEntry(leafEntry *key, const Attribute &attribute) {
         if (getFreeSpace() < key->getEntryLength(attribute.type))return RC(IX_ERROR::PAGE_NO_ENOUGH_SPACE);
-
         int16_t pos = 0;
         // if not empty, find the right position
+        auto a = key->getKey<int32_t>();
         if (getkeyCounter() != 0) {
             for (int i = 0; i < getkeyCounter(); i++) {
                 auto curKey = (leafEntry *) (data + pos);
-                if (isKeyMeetCompCondition(key, curKey, attribute, LT_OP))break;
+                if (isCompositeKeyMeetCompCondition((uint8_t*)key, data + pos, attribute, LT_OP))break;
                 pos += curKey->getEntryLength(attribute.type);
             }
         }
@@ -30,82 +30,14 @@ namespace PeterDB {
         writeEntry(key, attribute, pos);
         setFreeBytePointer(getFreeBytePointer() + key->getEntryLength(attribute.type));
         setkeyCounter(getkeyCounter() + 1);
+        checkKey(pos, attribute, key);
         return SUCCESS;
     }
 
-    bool LeafNode::isKeyMeetCompCondition(leafEntry *key1, leafEntry *key2, const Attribute &attr, const CompOp op) {
-        // todo also compare RID
-        switch (attr.type) {
-            case TypeInt: {
-                int int1 = key1->getKey<int>();
-                int int2 = key2->getKey<int>();
-                switch (op) {
-                    case GT_OP:
-                        return int1 > int2;
-                    case GE_OP:
-                        return int1 >= int2;
-                    case LT_OP:
-                        return int1 < int2;
-                    case LE_OP:
-                        return int1 <= int2;
-                    case NE_OP:
-                        return int1 != int2;
-                    case EQ_OP:
-                        return int1 == int2;
-                    default:
-                        return false;
-                }
-                break;
-            }
-            case TypeReal: {
-                auto float1 = key1->getKey<float>();
-                auto float2 = key2->getKey<float>();
-                switch (op) {
-                    case GT_OP:
-                        return float1 > float2;
-                    case GE_OP:
-                        return float1 >= float2;
-                    case LT_OP:
-                        return float1 < float2;
-                    case LE_OP:
-                        return float1 <= float2;
-                    case NE_OP:
-                        return float1 != float2;
-                    case EQ_OP:
-                        return float1 == float2;
-                    default:
-                        return false;
-                }
-                break;
-            }
-            case TypeVarChar:
-                auto str1 = key1->getKey<std::string>();
-                auto str2 = key2->getKey<std::string>();
-                switch (op) {
-                    case GT_OP:
-                        return str1 > str2;
-                    case GE_OP:
-                        return str1 >= str2;
-                    case LT_OP:
-                        return str1 < str2;
-                    case LE_OP:
-                        return str1 <= str2;
-                    case NE_OP:
-                        return str1 != str2;
-                    case EQ_OP:
-                        return str1 == str2;
-                    default:
-                        return false;
-                }
-                break;
-        }
-        return false;
-    }
-
-    internalEntry *LeafNode::splitNode(leafEntry *key, const Attribute &attr) {
+    RC LeafNode::splitNode(leafEntry *key, const Attribute &attr, internalEntry *newChild) {
         RC ret = ixFileHandle.appendEmptyPage();
-        assert(ret = SUCCESS);
-        auto leaf2Page = ixFileHandle.getLastPageIndex();
+        assert(ret == SUCCESS);
+        int32_t leaf2Page = ixFileHandle.getLastPageIndex();
 
         int16_t moveStartPos = 0;
         int16_t moveStartIndex = 0;
@@ -116,7 +48,7 @@ namespace PeterDB {
 
         auto curKey = (leafEntry *) (data + moveStartPos);
         bool isSplitFeasible = true;
-        if (isKeyMeetCompCondition(key, curKey, attr, CompOp::LT_OP)) {
+        if (isCompositeKeyMeetCompCondition((uint8_t*)key, (uint8_t*)curKey, attr, CompOp::LT_OP)) {
             // new entry into L1
             if (moveStartPos + key->getEntryLength(attr.type) > getMaxFreeSpace()) {
                 isSplitFeasible = false;
@@ -148,11 +80,13 @@ namespace PeterDB {
 
         // Insert new leaf page into the leaf page linked list
         leaf2.setNextPtr(this->nextPtr);
+        // new page is larger number;
+        assert( leaf2Page > this->nextPtr);
         nextPtr = leaf2Page;
 
         // Insert new entry into old page or new page
         curKey = (leafEntry *) (data + moveStartPos);
-        if (isKeyMeetCompCondition(key, curKey, attr, CompOp::LT_OP)) {
+        if (isCompositeKeyMeetCompCondition((uint8_t*)key, (uint8_t*)curKey, attr, CompOp::LT_OP)) {
             ret = insertEntry(key, attr);
             assert(ret == SUCCESS);
         } else {
@@ -163,18 +97,23 @@ namespace PeterDB {
         // generate new middle key to copy up
         // newchildentry = & (smallest key value on L2, pointer to L2)
         uint8_t buffer[PAGE_SIZE];
-        auto middleKey = (internalEntry *) buffer;
-        uint8_t buffer2[PAGE_SIZE];
-        auto entry = (leafEntry*)buffer2;
-        leaf2.getEntry(0, entry);
-        middleKey->setKey(attr.type, entry->getKeyPtr<uint8_t>());
-        middleKey->setRightChild(attr.type, leaf2Page);
-        return middleKey;
+        auto entry = (leafEntry *) buffer;
+        leaf2.getEntry(0, entry, attr);
+        newChild->setKey(attr.type, entry->getKeyPtr<uint8_t>());
+        newChild->setRightChild(attr.type, leaf2Page);
+        return SUCCESS;
     }
 
-    RC LeafNode::getEntry(int16_t pos, leafEntry *leaf) {
+    RC LeafNode::getEntry(int16_t pos, leafEntry *leaf, Attribute attr) {
         assert(pos < getFreeBytePointer());
-        leaf = (leafEntry *) (data + pos);
+        leaf->setKey(attr.type, data + pos);
+        pos += leaf->getKeyLength(attr.type);
+        uint32_t pageNum;
+        uint16_t slotNum;
+        memcpy(&pageNum, data + pos, sizeof(uint32_t));
+        pos += sizeof(uint32_t);
+        memcpy(&slotNum, data + pos, sizeof(uint16_t));
+        leaf->setRID(attr.type, pageNum, slotNum);
         return SUCCESS;
     }
 
@@ -182,7 +121,7 @@ namespace PeterDB {
         pos = 0;
         auto entry = (leafEntry *) data;
         for (int16_t index = 0; index < keyCounter; index++) {
-            if (isKeyMeetCompCondition(entry, (leafEntry *) key, attr, op)) {
+            if (isCompositeKeyMeetCompCondition((uint8_t*)entry,  key, attr, op)) {
                 break;
             }
             pos += entry->getEntryLength(attr.type);
@@ -191,28 +130,46 @@ namespace PeterDB {
         return SUCCESS;
     }
 
-    RC LeafNode::deleteEntry(leafEntry *key, const Attribute& attr){
+    RC LeafNode::deleteEntry(leafEntry *key, const Attribute &attr) {
         RC ret = 0;
         int16_t slotPos = 0;
-        findFirstKeyMeetCompCondition(slotPos, (uint8_t *)key, attr, EQ_OP);
-        if(slotPos >= getFreeBytePointer()) {
+        findFirstKeyMeetCompCondition(slotPos, (uint8_t *) key, attr, EQ_OP);
+        if (slotPos >= getFreeBytePointer()) {
             return RC(IX_ERROR::LEAF_ENTRY_NOT_EXIST);
         }
-        int16_t dataNeedMovePos = slotPos + key->getEntryLength(attr.type);
-        if(dataNeedMovePos < getFreeBytePointer()) {
-            shiftDataLeft(dataNeedMovePos, key->getEntryLength(attr.type));
+        int16_t curEntryLen = ((leafEntry*)(data + slotPos))->getEntryLength(attr.type);
+        int16_t dataNeedMovePos = slotPos +curEntryLen  ;
+        if (dataNeedMovePos < getFreeBytePointer()) {
+            shiftDataLeft(dataNeedMovePos, curEntryLen);
         }
-        setFreeBytePointer(getFreeBytePointer() - key->getEntryLength(attr.type));
+        setFreeBytePointer(getFreeBytePointer() - curEntryLen);
         setkeyCounter(getkeyCounter() - 1);
         return SUCCESS;
     }
 
-    RC LeafNode::print(const Attribute &attr, std::ostream &out) {
-        out << "{\"keys\": [";
-        uint32_t pageNum;
-        uint16_t slotNum;
+    RC LeafNode::insertOrSplitEntry(leafEntry *key, const Attribute &attribute, internalEntry * newChild, bool& isNewChildExist){
+        // if L has space,
+        if (getFreeSpace() > key->getEntryLength(attribute.type)) {
+            RC ret = insertEntry(key, attribute);
+            if (ret) return RC(IX_ERROR::LEAF_INSERT_ENTRY_FAIL);
+            isNewChildExist = false;
 
-        auto curEntry = (leafEntry *)data;
+        } else {
+            // split L: first d entries stay, rest move to brand new node L2;
+            RC ret = splitNode(key, attribute, newChild);
+            if (ret) return RC(IX_ERROR::LEAF_SPLIT_ENTRY_FAIL);
+            isNewChildExist = true;
+        }
+        return  SUCCESS;
+    }
+
+    RC LeafNode::print(const Attribute &attr, std::ostream &out) {
+        RC ret = 0;
+        out << "{\"keys\": [";
+        int16_t offset = 0;
+        uint32_t pageNum;
+        int16_t slotNum;
+
         int32_t curInt;
         float curFloat;
         std::string curStr;
@@ -223,15 +180,15 @@ namespace PeterDB {
             // Print Key
             switch (attr.type) {
                 case TypeInt:
-                    curInt = curEntry->getKey<int32_t>();
+                    curInt = ((leafEntry*)(data + offset))->getKey<int32_t>();
                     out << curInt << ":[";
                     break;
                 case TypeReal:
-                    curFloat = curEntry->getKey<float>();
+                    curFloat = ((leafEntry*)(data + offset))->getKey<float>();
                     out << curFloat << ":[";
                     break;
                 case TypeVarChar:
-                    curStr = curEntry->getKey<std::string>();
+                    curStr = ((leafEntry*)(data + offset))->getKey<std::string>();
                     out << curStr << ":[";
                     break;
                 default:
@@ -239,26 +196,31 @@ namespace PeterDB {
             }
             // Print following Rid with the same key
             while(i < getkeyCounter()) {
-                curEntry->getRID(attr.type, pageNum, slotNum);
+                offset += ((leafEntry*)(data + offset))->getKeyLength(attr.type);
+
+                memcpy(&pageNum, data + offset, sizeof(uint32_t));
+                offset += sizeof(uint32_t);
+                memcpy(&slotNum, data + offset,sizeof(uint16_t));
+                offset += sizeof(uint16_t);
                 out << "(" << pageNum << "," << slotNum <<")";
                 i++;
 
                 if(i >= getkeyCounter()) {
                     break;
                 }
-                auto sameKeyEntry = curEntry->getNextEntry(attr.type);
+
                 bool isKeySame = true;
                 switch (attr.type) {
                     case TypeInt:
-                        if(sameKeyEntry->getKey<int32_t>() != curInt)
+                        if(((leafEntry*)(data + offset))->getKey<int32_t>() != curInt)
                             isKeySame = false;
                         break;
                     case TypeReal:
-                        if(sameKeyEntry->getKey<float>() != curFloat)
+                        if(((leafEntry*)(data + offset))->getKey<float>() != curFloat)
                             isKeySame = false;
                         break;
                     case TypeVarChar:
-                        if(sameKeyEntry->getKey<std::string>() != curStr)
+                        if(((leafEntry*)(data + offset))->getKey<std::string>() != curStr)
                             isKeySame = false;
                         break;
                     default:
@@ -267,7 +229,6 @@ namespace PeterDB {
                 if(!isKeySame) {
                     break;
                 }
-                curEntry = sameKeyEntry;
 
                 out << ",";
             }
@@ -279,5 +240,10 @@ namespace PeterDB {
         }
         out << "]}";
         return 0;
+    }
+
+    RC LeafNode::checkKey(int16_t pos, Attribute attr, leafEntry *key) {
+        getEntry(pos, (leafEntry *) checkEntryKey, attr);
+        assert(memcmp(checkEntryKey, key, key->getEntryLength(attr.type)) == 0);
     }
 }

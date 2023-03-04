@@ -168,6 +168,7 @@ namespace PeterDBTesting {
         bool destroyFile = true;
         bool closeFile = true;
         std::vector<PeterDB::RID> rids;
+        int32_t stopCount = 0;
 
     public:
         void SetUp() override {

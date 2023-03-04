@@ -230,6 +230,7 @@ namespace PeterDBTesting {
         // insert entries
         generateAndInsertEntries(numOfEntries, ageAttr, seed, salt);
 
+
         // Scan
         ASSERT_EQ(ix.scan(ixFileHandle, ageAttr, nullptr, nullptr, true, true, ix_ScanIterator), success)
                                     << "indexManager::scan() should succeed.";
@@ -260,6 +261,7 @@ namespace PeterDBTesting {
 
         // Reopen the file
         reopenIndexFile();
+
 
         // Scan again
         ASSERT_EQ(ix.scan(ixFileHandle, ageAttr, nullptr, nullptr, true, true, ix_ScanIterator), success)
@@ -432,7 +434,13 @@ namespace PeterDBTesting {
 
         // Insert entries
         generateAndInsertEntries(numOfEntries, ageAttr, seed, salt);
-
+        std::stringstream stream;
+        ix.printBTree(ixFileHandle, ageAttr, stream);
+        nlohmann::ordered_json j;
+        stream >> j;
+        LOG(INFO) << j.dump(2);
+        exit(0);
+        //todo nodetype error when scan
         // Scan
         ASSERT_EQ(ix.scan(ixFileHandle, ageAttr, nullptr, nullptr, true, true, ix_ScanIterator), success)
                                     << "indexManager::scan() should succeed.";

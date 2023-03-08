@@ -6,6 +6,7 @@
 #include <queue>
 #include <cstring>
 #include<cassert>
+#include <glog/logging.h>
 
 #include "pfm.h"
 #include "rbfm.h" // for some type declarations only, e.g., RID and Attribute
@@ -28,7 +29,6 @@ namespace PeterDB {
         const int16_t INTERNAL_NODE = 1;
         const int16_t LEAF_NODE = 2;
 
-        const int32_t NEXT_POINTER_NULL = 0;
     }
     struct internalEntry {
         int32_t indicator;
@@ -77,7 +77,10 @@ namespace PeterDB {
             return (internalEntry *) ((uint8_t *) this + getEntryLength(type));
         }
 
-        void setKey(AttrType type, uint8_t *key) {
+        void setCompositeKey(AttrType type, uint8_t *key) {
+            if (type == TypeVarChar){
+                memcpy((uint8_t *) this, key, sizeof(int32_t));
+            }
             memcpy((uint8_t *) this, key, getCompositeKeyLength(type));
         }
 
@@ -133,6 +136,9 @@ namespace PeterDB {
         }
 
         void setKey(AttrType type, uint8_t *key) {
+            if (type == TypeVarChar){
+                memcpy((uint8_t *) this, key, sizeof(int32_t));
+            }
             memcpy((uint8_t *) this, key, getKeyLength(type));
         }
 
@@ -181,6 +187,8 @@ namespace PeterDB {
 
         RC findTargetLeafNode(IXFileHandle &ixFileHandle, int32_t& targetLeaf, const uint8_t* key, const Attribute& attr);
             // Initialize and IX_ScanIterator to support a range search
+
+        RC genCompositeEntry(const Attribute &attribute,const void *key, const RID &rid, uint8_t *entry );
         RC scan(IXFileHandle &ixFileHandle,
                 const Attribute &attribute,
                 const void *lowKey,
@@ -246,8 +254,6 @@ namespace PeterDB {
         unsigned ixWritePageCounter;
         unsigned ixAppendPageCounter;
         int32_t rootPagePtr;
-        // int, real, varchar, for sanity check
-        int32_t KeyType;
 
         std::string fileName;
         FILE *fileInMemory;
@@ -399,6 +405,13 @@ namespace PeterDB {
         bool isRoot(){
             if (getPageNum() == ixFileHandle.getRoot())return true;
             return false;
+        }
+
+        std::string getKeyString(const uint8_t* key) {
+            int32_t strLen;
+            memcpy(&strLen, key, sizeof(int32_t));
+            std::string str((char *)(key + sizeof(int32_t)), strLen);
+            return str;
         }
 
         bool isCompositeKeyMeetCompCondition(const uint8_t* key1, const uint8_t* key2, const Attribute& attr, const CompOp op);

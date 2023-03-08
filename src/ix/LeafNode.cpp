@@ -99,7 +99,7 @@ namespace PeterDB {
         uint8_t buffer[PAGE_SIZE];
         auto entry = (leafEntry *) buffer;
         leaf2.getEntry(0, entry, attr);
-        newChild->setKey(attr.type, entry->getKeyPtr<uint8_t>());
+        newChild->setCompositeKey(attr.type, entry->getKeyPtr<uint8_t>());
         newChild->setRightChild(attr.type, leaf2Page);
         return SUCCESS;
     }
@@ -138,7 +138,7 @@ namespace PeterDB {
             return RC(IX_ERROR::LEAF_ENTRY_NOT_EXIST);
         }
         int16_t curEntryLen = ((leafEntry*)(data + slotPos))->getEntryLength(attr.type);
-        int16_t dataNeedMovePos = slotPos +curEntryLen  ;
+        int16_t dataNeedMovePos = slotPos + curEntryLen  ;
         if (dataNeedMovePos < getFreeBytePointer()) {
             shiftDataLeft(dataNeedMovePos, curEntryLen);
         }

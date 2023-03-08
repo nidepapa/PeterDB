@@ -434,14 +434,7 @@ namespace PeterDBTesting {
 
         // Insert entries
         generateAndInsertEntries(numOfEntries, ageAttr, seed, salt);
-        std::stringstream stream;
-        ix.printBTree(ixFileHandle, ageAttr, stream);
-        nlohmann::ordered_json j;
-        stream >> j;
-        LOG(INFO) << j.dump(2);
-        exit(0);
-        //todo nodetype error when scan
-        // Scan
+
         ASSERT_EQ(ix.scan(ixFileHandle, ageAttr, nullptr, nullptr, true, true, ix_ScanIterator), success)
                                     << "indexManager::scan() should succeed.";
 
@@ -473,7 +466,6 @@ namespace PeterDBTesting {
                 GTEST_LOG_(INFO) << deletedRecordNum << " deleted. ";
             }
         }
-
         // Close Scan and reinitialize the scan
         ASSERT_EQ(ix_ScanIterator.close(), success) << "IX_ScanIterator::close() should succeed.";
         ASSERT_EQ(ix.scan(ixFileHandle, ageAttr, nullptr, nullptr, true, true, ix_ScanIterator), success)
@@ -567,6 +559,12 @@ namespace PeterDBTesting {
         ASSERT_EQ(ix.scan(ixFileHandle, heightAttr, nullptr, nullptr, true, true, ix_ScanIterator), success)
                                     << "indexManager::scan() should succeed.";
 
+//        std::stringstream stream;
+//        ix.printBTree(ixFileHandle, ageAttr, stream);
+//        nlohmann::ordered_json j;
+//        stream >> j;
+//        LOG(INFO) << j.dump(2);
+//        exit(0);
         // Delete entries in IndexScan Iterator
         unsigned count = 0;
         while (ix_ScanIterator.getNextEntry(rid, &key) == success) {
@@ -704,7 +702,7 @@ namespace PeterDBTesting {
 
         // insert entry
         unsigned i = 0;
-        for (unsigned &k:keys) {
+        for (unsigned &k: keys) {
             i++;
             // Prepare a key
             prepareKeyAndRid(k, key, rid, empNameAttr.length);

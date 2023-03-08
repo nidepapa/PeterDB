@@ -13,7 +13,6 @@ namespace PeterDB {
         }
         // skip the left most pointer;
         int16_t pos = IX::NEXT_POINTER_LEN;
-        //auto firstGTEntry = (internalEntry *) (data + IX::NEXT_POINTER_LEN);
         ret = findPosToInsertKey(pos, (internalEntry *) key, attr);
         assert(ret == SUCCESS);
         // Get previous child pointer
@@ -64,7 +63,7 @@ namespace PeterDB {
         // ... | Prev Key | Cur Key | ...
         if (newKeyInsertPos <= prevPos) {
             // Case 1: Previous Key will be middle key
-            newChildEntry->setKey(attr.type, prevKey->getKeyPtr<uint8_t>());
+            newChildEntry->setCompositeKey(attr.type, prevKey->getKeyPtr<uint8_t>());
             newChildEntry->setRightChild(attr.type, internal2Page);
             // insert new N2 data
             moveStartPos = prevPos + prevKey->getCompositeKeyLength(attr.type);
@@ -83,7 +82,7 @@ namespace PeterDB {
 
         } else if (newKeyInsertPos == curPos) {
             // Case 2: New key will be the middle key
-            newChildEntry->setKey(attr.type, keyToInsert->getKeyPtr<uint8_t>());
+            newChildEntry->setCompositeKey(attr.type, keyToInsert->getKeyPtr<uint8_t>());
             newChildEntry->setRightChild(attr.type, internal2Page);
             // insert new N2 data
             // set newChildEntry right child to N2;
@@ -100,7 +99,7 @@ namespace PeterDB {
             setkeyCounter(prevIndex + 1);
         } else {
             // Case 3: Current Key will be middle page
-            newChildEntry->setKey(attr.type, curKey->getKeyPtr<uint8_t>());
+            newChildEntry->setCompositeKey(attr.type, curKey->getKeyPtr<uint8_t>());
             newChildEntry->setRightChild(attr.type, internal2Page);
             moveStartPos = curPos + curKey->getCompositeKeyLength(attr.type);
             moveLen = getFreeBytePointer() - moveStartPos;
@@ -158,9 +157,6 @@ namespace PeterDB {
         curPos = IX::NEXT_POINTER_LEN;
         if (getkeyCounter() == 0)return SUCCESS;
         for (int16_t i = 0; i < getkeyCounter(); i++) {
-            if (curPos > getFreeBytePointer()) {
-                std::cout << "S" << std::endl;
-            }
             if (isCompositeKeyMeetCompCondition((data + curPos), (uint8_t *) key, attr, GT_OP)) break;
             curPos += ((internalEntry *) (data + curPos))->getEntryLength(attr.type);
         }
@@ -193,6 +189,7 @@ namespace PeterDB {
                     out << entry->getKey<float>();
                     break;
                 case TypeVarChar:
+                    //std::cout<<"Str: " << getKeyString(data + offset)<<std::endl;
                     out << entry->getKey<std::string>();
                     break;
                 default:

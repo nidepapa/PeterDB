@@ -8,9 +8,9 @@ namespace PeterDB {
     bool IXNode::isCompositeKeyMeetCompCondition(const uint8_t* key1,  const uint8_t* key2,  const Attribute& attr, const CompOp op){
         RID rid1, rid2;
         ((internalEntry*)key1)->getRID(attr.type, rid1.pageNum, rid1.slotNum);
-        assert(rid1.pageNum > 0);
+        assert(rid1.pageNum >= 0);
         ((internalEntry*)key2)->getRID(attr.type, rid2.pageNum, rid2.slotNum);
-        assert(rid2.pageNum > 0);
+        assert(rid2.pageNum >= 0);
         switch (op) {
             case GT_OP:
                 return isKeyMeetCompCondition(key1, key2, attr, GT_OP) ||
@@ -121,5 +121,34 @@ namespace PeterDB {
                 return false;
         }
         return false;
+    }
+
+    RC IXNode::shiftDataLeft(int16_t dataNeedShiftStartPos, int16_t dist) {
+        int16_t dataNeedMoveLen = getFreeBytePointer() - dataNeedShiftStartPos;
+        if (dataNeedMoveLen < 0) {
+            return RC(IX_ERROR::MOVE_FAIL);
+        }
+        if (dataNeedMoveLen == 0) {
+            return 0;
+        }
+
+        // Must Use Memmove! Source and Destination May Overlap
+        memmove(data + dataNeedShiftStartPos - dist, data + dataNeedShiftStartPos, dataNeedMoveLen);
+
+        return 0;
+    }
+
+    RC IXNode::shiftDataRight(int16_t dataNeedMoveStartPos, int16_t dist) {
+        int16_t dataNeedMoveLen = getFreeBytePointer() - dataNeedMoveStartPos;
+        if (dataNeedMoveLen < 0) {
+            return RC(IX_ERROR::MOVE_FAIL);
+        }
+        if (dataNeedMoveLen == 0) {
+            return 0;
+        }
+        // Must Use Memmove! Source and Destination May Overlap
+        memmove(data + dataNeedMoveStartPos + dist, data + dataNeedMoveStartPos, dataNeedMoveLen);
+
+        return 0;
     }
 }

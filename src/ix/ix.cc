@@ -46,10 +46,10 @@ namespace PeterDB {
         }
 
         uint8_t data[PAGE_SIZE];
-        auto entry = (leafEntry *) data;
-        entry->setKey(attribute.type, (uint8_t *) key);
-        entry->setRID(attribute.type, rid.pageNum, rid.slotNum);
-        assert(entry->getKeyLength(attribute.type) == attribute.length);
+        memset(data, 0, PAGE_SIZE);
+        genCompositeEntry(attribute, key, rid, data);
+        auto entry = (leafEntry*)data;
+
         if (ixFileHandle.isRootNull()) {
             RC ret = ixFileHandle.createRootPage();
             assert(ret == 0);
@@ -74,17 +74,17 @@ namespace PeterDB {
         RC ret = 0;
 
         if (ixFileHandle.isRootNull()) return RC(IX_ERROR::ROOT_NOT_EXIST);
+        // make the composite entry
+        uint8_t entryToDel[PAGE_SIZE];
+        memset(entryToDel, 0 , PAGE_SIZE);
+        genCompositeEntry(attribute, key, rid, entryToDel);
 
         int32_t leafPage;
-        ret = findTargetLeafNode(ixFileHandle, leafPage, (uint8_t *) key, attribute);
+        ret = findTargetLeafNode(ixFileHandle, leafPage, entryToDel, attribute);
+
         if (ret) return ret;
         LeafNode leaf(ixFileHandle, leafPage);
-        uint8_t buffer[PAGE_SIZE];
-        memset(buffer, 0 , PAGE_SIZE);
-        auto entryToDel = (leafEntry *) buffer;
-        entryToDel->setKey(attribute.type, (uint8_t *) key);
-        entryToDel->setRID(attribute.type, rid.pageNum, rid.slotNum);
-        ret = leaf.deleteEntry(entryToDel, attribute);
+        ret = leaf.deleteEntry((leafEntry *)entryToDel, attribute);
         if (ret) return ret;
         return SUCCESS;
     }
@@ -106,6 +106,9 @@ namespace PeterDB {
     RC IndexManager::printBTree(IXFileHandle &ixFileHandle, const Attribute &attribute, std::ostream &out) const {
         RC ret = 0;
         if (ixFileHandle.isRootNull()) return RC(IX_ERROR::ROOT_NOT_EXIST);
+        if (!ixFileHandle.isOpen()){
+            ixFileHandle.open(ixFileHandle.getFileName());
+        }
         int16_t nodeType;
         {
             IXNode node(ixFileHandle, ixFileHandle.getRoot());
@@ -150,6 +153,7 @@ namespace PeterDB {
                 // Insert <returned middle composite key, new child page pointer> into current index page
                 int16_t entryLen = newChildEntry->getEntryLength(attribute.type);
                 uint8_t tmpEntry[entryLen];
+                memset(tmpEntry, 0, entryLen);
                 memcpy(tmpEntry, newChildEntry, entryLen);
                 ret = noLeaf.splitOrInsertNode((internalEntry*)tmpEntry, attribute, newChildEntry, isNewChildExist);
                 if(ret) return ret;
@@ -190,6 +194,9 @@ namespace PeterDB {
                 InternalNode internal(ixFileHandle, curPageNum);
                 ret = internal.getTargetChild((leafEntry *) key, attr, curPageNum);
                 if (ret) return ret;
+            }else{
+                LOG(ERROR) << "Node Type Invalid! @ IndexManager::findTargetLeafNode" << std::endl;
+                return RC(IX_ERROR::NODE_TYPE_INVALID);
             }
         }
         if (curPageNum != IX::NULL_PTR && curPageNum < ixFileHandle.getNumberOfPages()) {
@@ -199,32 +206,8 @@ namespace PeterDB {
         return SUCCESS;
     }
 
-    RC IXNode::shiftDataLeft(int16_t dataNeedShiftStartPos, int16_t dist) {
-        int16_t dataNeedMoveLen = getFreeBytePointer() - dataNeedShiftStartPos;
-        if (dataNeedMoveLen < 0) {
-            return RC(IX_ERROR::MOVE_FAIL);
-        }
-        if (dataNeedMoveLen == 0) {
-            return 0;
-        }
-
-        // Must Use Memmove! Source and Destination May Overlap
-        memmove(data + dataNeedShiftStartPos - dist, data + dataNeedShiftStartPos, dataNeedMoveLen);
-
-        return 0;
-    }
-
-    RC IXNode::shiftDataRight(int16_t dataNeedMoveStartPos, int16_t dist) {
-        int16_t dataNeedMoveLen = getFreeBytePointer() - dataNeedMoveStartPos;
-        if (dataNeedMoveLen < 0) {
-            return RC(IX_ERROR::MOVE_FAIL);
-        }
-        if (dataNeedMoveLen == 0) {
-            return 0;
-        }
-        // Must Use Memmove! Source and Destination May Overlap
-        memmove(data + dataNeedMoveStartPos + dist, data + dataNeedMoveStartPos, dataNeedMoveLen);
-
-        return 0;
+    RC IndexManager::genCompositeEntry(const Attribute &attribute,const void *key, const RID &rid, uint8_t *entry ){
+        ((leafEntry *) entry)->setKey(attribute.type, (uint8_t *) key);
+        ((leafEntry *) entry)->setRID(attribute.type, rid.pageNum, rid.slotNum);
     }
 } // namespace PeterDB

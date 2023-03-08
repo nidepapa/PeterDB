@@ -85,6 +85,7 @@ namespace PeterDB {
         PAGE_TYPE_UNKNOWN,
         MOVE_FAIL,
         LEAF_SPLIT_ENTRY_FAIL,
+        NODE_TYPE_INVALID,
         };
 }
 

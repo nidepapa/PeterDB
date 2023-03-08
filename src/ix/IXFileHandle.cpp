@@ -55,7 +55,6 @@ namespace PeterDB{
         fread(&ixWritePageCounter, sizeof(unsigned), 1, fileInMemory);
         fread(&ixAppendPageCounter, sizeof(unsigned), 1, fileInMemory);
         fread(&rootPagePtr, sizeof(int32_t), 1, fileInMemory);
-        fread(&KeyType, sizeof(int32_t), 1, fileInMemory);
 
         return SUCCESS;
     }
@@ -69,7 +68,6 @@ namespace PeterDB{
         fwrite(&ixWritePageCounter, sizeof(unsigned), 1, fileInMemory);
         fwrite(&ixAppendPageCounter, sizeof(unsigned), 1, fileInMemory);
         fwrite(&rootPagePtr, sizeof(int32_t), 1, fileInMemory);
-        fwrite(&KeyType, sizeof(int32_t), 1, fileInMemory);
 
         fflush(fileInMemory);
         return SUCCESS;
@@ -83,10 +81,6 @@ namespace PeterDB{
         clearerr(PeterDB::IXFileHandle::fileInMemory);
         fseek(fileInMemory, IX::File_Header_Page_Size + PAGE_SIZE * pageNum, SEEK_SET);
         size_t result = fread(data, PAGE_SIZE, 1, fileInMemory);
-        if(result != 1){
-            auto x =1;
-            std::cout<<"s"<<std::endl;
-        }
         assert(result == 1);
         ixReadPageCounter = ixReadPageCounter + 1;
         return flushMetaData();

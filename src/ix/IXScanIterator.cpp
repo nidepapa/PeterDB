@@ -18,6 +18,9 @@ namespace PeterDB {
         remainDataLen = 0;
         entryExceedUpperBound = false;
 
+        if (!fileHandle->isOpen()){
+            fileHandle->open(fileHandle->getFileName());
+        }
         if (ixFileHandle->isRootNull()) {
             return RC(IX_ERROR::ROOT_NOT_EXIST);
         }
@@ -87,7 +90,6 @@ namespace PeterDB {
         }
         memcpy(key, entry->getKeyPtr<uint8_t>(), entry->getKeyLength(attr.type));
         entry->getRID(attr.type, rid.pageNum, rid.slotNum);
-
         return SUCCESS;
     }
 

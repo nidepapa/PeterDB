@@ -10,9 +10,9 @@
 ### 2. Meta-data page in an index file
 - 
 
-| readCounter | writeCounter | appendCounter | root PageNum | key Type |
-|-------------|--------------|---------------|--------------|----------|
-| 4 byte      | 4 bytes      | 4 bytes       | 4 bytes      | 4 bytes  |
+| readCounter | writeCounter | appendCounter | root PageNum | ~~key Type~~ |
+|-------------|--------------|---------------|--------------|--------------|
+| 4 byte      | 4 bytes      | 4 bytes       | 4 bytes      | ~~4 bytes~~  |
 
 ### 3. Index Entry Format
 
@@ -20,9 +20,9 @@
 
     - entries on internal nodes:
 
-| key    | childPointer | 
-|--------|--------------|
-| ? byte | 4 bytes      |
+| key    | pageNum | slotNum | childPointer |
+|--------|---------|---------|--------------|
+| ? byte | 4 bytes | 2 bytes | 4 bytes      |
 
       - entries on leaf nodes:
 
@@ -41,12 +41,12 @@
 ### 5. Describe the following operation logic.
 
 - Split
-  1. leaf node:
-     1. if the node is full, break the node at the m/2 position
-     2. insert the data entry into one of the new nodes in increasing order
-     3. copy up the first key of the right node up to parents
+    1. leaf node:
+        1. if the node is full, break the node at the m/2 position
+        2. insert the data entry into one of the new nodes in increasing order
+        3. copy up the first key of the right node up to parents
 
-  2. no-leaf node:
+    2. no-leaf node:
     1. if the node is full, break the node at the m/2 position
     2. insert the key into one of the new nodes in increasing order
     3. push up the first key of the right node up to parents
@@ -59,11 +59,13 @@
 - Merge/non-lazy deletion (if applicable)
 
 not applicable
+
 - Duplicate key span in a page
-we have different key in leaf node. even the key is identical, RIDs are different.
+  we have different key in leaf node. even the key is identical, RIDs are different.
 
 - Duplicate key span multiple pages (if applicable)
-not applicable
+  not applicable
+
 ### 6. Implementation Detail
 
 - Have you added your own module or source file (.cc or .h)?

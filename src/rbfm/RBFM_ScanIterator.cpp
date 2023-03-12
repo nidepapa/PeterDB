@@ -102,7 +102,6 @@ namespace PeterDB {
             } else {
                 // check if the record meet the condition
                 uint8_t attr[PAGE_SIZE];
-                //memset(attr, 0 , PAGE_SIZE);
                 RecordHelper::recordGetAttr(recordData, conditionAttrIdx, recordDescriptor, attr);
                 int16_t attrLen = RecordHelper::recordGetAttrLen(recordData,conditionAttrIdx);
                 if (recordMeetCondition(attr, attrLen))break;

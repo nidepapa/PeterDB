@@ -32,9 +32,9 @@ flag: 1 - system table 2 - user table (used as authorization control)
 
 - Show your record format design.
 
-| Flag   | PlaceHolder | AttrNum | Attr Directory    | Attr Values                |
-|--------|-------------|---------|-------------------|----------------------------|
-| 1 byte | 1 byte      | 2 byte  | 2 * Attr Num byte | Variable (at least 1 byte) |
+| Flag   | AttrNum | Attr Directory    | Attr Values                |
+|--------|---------|-------------------|----------------------------|
+| 2 byte | 2 byte  | 2 * Attr Num byte | Variable (at least 1 byte) |
 
 1. flag: 0-real record; 1-pointer
 2. placeholder: since there is a possibility that we have to store a RID in tombstone

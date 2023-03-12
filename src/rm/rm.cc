@@ -1,4 +1,5 @@
 #include "src/include/rm.h"
+#include "src/include/ix.h"
 #include <cstdio>
 #include <typeinfo>
 #include <cstring>
@@ -34,10 +35,16 @@ namespace PeterDB {
             LOG(ERROR) << "create file err" << "@RelationManager::createCatalog" << std::endl;
             return RC(RM_ERROR::ERR_UNDEFINED);
         }
+        rc = rbfm.createFile(CATALOG_INDEXES);
+        if (rc) {
+            LOG(ERROR) << "create file err" << "@RelationManager::createCatalog" << std::endl;
+            return RC(RM_ERROR::ERR_UNDEFINED);
+        }
 
         // 2. insert original metadata
         insertMetaDataToCatalog(CATALOG_TABLES, catalogTablesSchema);
         insertMetaDataToCatalog(CATALOG_COLUMNS, catalogColumnsSchema);
+        insertMetaDataToCatalog(CATALOG_INDEXES, catalogIndexesSchema);
         return SUCCESS;
     }
 
@@ -56,6 +63,13 @@ namespace PeterDB {
         }
         if (!fhColumns.isFileOpen()) {
             rc = rbfm.openFile(CATALOG_COLUMNS, fhColumns);
+            if (rc) {
+                LOG(ERROR) << "open file err" << "@RelationManager::createCatalog" << std::endl;
+                return RC(RM_ERROR::ERR_UNDEFINED);
+            }
+        }
+        if (!fhColumns.isFileOpen()) {
+            rc = rbfm.openFile(CATALOG_INDEXES, fhIndexes);
             if (rc) {
                 LOG(ERROR) << "open file err" << "@RelationManager::createCatalog" << std::endl;
                 return RC(RM_ERROR::ERR_UNDEFINED);
@@ -119,6 +133,7 @@ namespace PeterDB {
 
         fhTables.closeFile();
         fhColumns.closeFile();
+        fhIndexes.closeFile();
 
         rc = rbfm.destroyFile(CATALOG_TABLES);
         if (rc) {
@@ -126,6 +141,11 @@ namespace PeterDB {
             return rc;
         }
         rc = rbfm.destroyFile(CATALOG_COLUMNS);
+        if (rc) {
+            LOG(ERROR) << "destroy file err" << "@RelationManager::deleteCatalog" << std::endl;
+            return rc;
+        }
+        rc = rbfm.destroyFile(CATALOG_INDEXES);
         if (rc) {
             LOG(ERROR) << "destroy file err" << "@RelationManager::deleteCatalog" << std::endl;
             return rc;
@@ -183,6 +203,21 @@ namespace PeterDB {
                     << std::endl;
             return RC(RM_ERROR::ERR_UNDEFINED);
         }
+        // Scan index table
+        RBFM_ScanIterator idxIterator;
+        std::vector<std::string> idxAttrNames = {CATALOG_INDEXES_TABLEID};
+        rc = rbfm.scan(fhIndexes, catalogIndexesSchema, CATALOG_INDEXES_TABLEID,
+                       EQ_OP, &tableID, idxAttrNames, idxIterator);
+        if (rc) {
+            return RC(RM_ERROR::ERR_UNDEFINED);
+        }
+        while (colIterator.getNextRecord(curRID, rawData) == 0) {
+            rc = rbfm.deleteRecord(fhIndexes, catalogIndexesSchema, curRID);
+            if (rc) {
+                return RC(RM_ERROR::ERR_UNDEFINED);
+            }
+        }
+
         return SUCCESS;
     }
 
@@ -191,7 +226,7 @@ namespace PeterDB {
         if (isTableNameEmpty(tableName)) {
             return RC(RM_ERROR::TABLE_NAME_EMPTY);
         }
-        if (!isTableNameValid(tableName)) {
+        if (!isTableAccessible(tableName)) {
             return RC(RM_ERROR::TABLE_NAME_INVALID);
         }
 
@@ -533,14 +568,6 @@ namespace PeterDB {
         return newID + 1;
     }
 
-    bool RelationManager::isTableNameValid(const std::string name) {
-        if (name != CATALOG_TABLES && name != CATALOG_COLUMNS) {
-            return true;
-        } else {
-            return false;
-        }
-    };
-
     bool RelationManager::isTableNameEmpty(const std::string name) {
         return name.empty();
     }
@@ -550,7 +577,7 @@ namespace PeterDB {
     }
 
     bool RelationManager::isTableAccessible(const std::string name) {
-        return name != CATALOG_TABLES && name != CATALOG_COLUMNS;
+        return name != CATALOG_TABLES && name != CATALOG_COLUMNS && name != CATALOG_INDEXES;
     }
 
     bool RelationManager::isCatalogReady() {
@@ -563,6 +590,10 @@ namespace PeterDB {
             LOG(ERROR) << "CATALOG_COLUMNS does not exist" << "@RelationManager::isCatalogReady" << std::endl;
             return false;
         }
+        if (!pfm.isFileExists(CATALOG_INDEXES)) {
+            LOG(ERROR) << "CATALOG_INDEXES does not exist" << "@RelationManager::isCatalogReady" << std::endl;
+            return false;
+        }
         return true;
     }
 
@@ -571,15 +602,6 @@ namespace PeterDB {
         memcpy(scanVal, &strLen, sizeof(int32_t));
         // ignore the /0
         memcpy(scanVal + sizeof(int32_t), value.c_str(), strLen);
-        return ;
-    }
-
-    void* RelationManager::scanIteratorValue(int value){
-        return &value;
-    }
-
-    void* RelationManager::scanIteratorValue(float value){
-        return &value;
     }
 
     // Extra credit work
@@ -594,7 +616,37 @@ namespace PeterDB {
 
     // QE IX related
     RC RelationManager::createIndex(const std::string &tableName, const std::string &attributeName) {
-        return -1;
+        RC rc;
+        if (isTableNameEmpty(tableName)) {
+            return RC(RM_ERROR::TABLE_NAME_EMPTY);
+        }
+        if (!isTableAccessible(tableName)) {
+            return RC(RM_ERROR::TABLE_ACCESS_DENIED);
+        }
+
+        RecordBasedFileManager& rbfm = RecordBasedFileManager::instance();
+        IndexManager& ix = IndexManager::instance();
+        // 1. create index file
+        std::string ixFileName = getIndexFileName(tableName, attributeName);
+        rc = ix.createFile(ixFileName);
+        if(rc) {
+            LOG(ERROR) << "Fail to create table's file! @ RelationManager::createIndex" << std::endl;
+            return rc;
+        }
+        // 2. update catalog
+        rc = openCatalog();
+        if(rc) {
+            return RC(RBFM_ERROR::CATALOG_NOT_OPEN);
+        }
+        CatalogTablesHelper tableRecord;
+        rc = getTableMetaData(tableName, tableRecord);
+        if(rc) return rc;
+        rc = insertIndexIntoCatalog(tableRecord.table_id, attributeName, ixFileName);
+        if(rc) return rc;
+        // 3. build index
+        rc = buildIndex(tableName, attributeName);
+        if (rc) return rc;
+        return SUCCESS;
     }
 
     RC RelationManager::destroyIndex(const std::string &tableName, const std::string &attributeName) {
@@ -612,17 +664,58 @@ namespace PeterDB {
         return -1;
     }
 
-
-    RM_IndexScanIterator::RM_IndexScanIterator() = default;
-
-    RM_IndexScanIterator::~RM_IndexScanIterator() = default;
-
-    RC RM_IndexScanIterator::getNextEntry(RID &rid, void *key) {
-        return -1;
+    std::string RelationManager::getIndexFileName(const std::string& tableName, const std::string& attrName) {
+        return tableName + '_' + attrName + ".idx";
     }
 
-    RC RM_IndexScanIterator::close() {
-        return -1;
+    RC RelationManager::insertIndexIntoCatalog(const int32_t tableID, const std::string &attrName,
+                                               const std::string &fileName) {
+        return 0;
     }
+
+    RC RelationManager::getTableMetaData(const std::string &tableName, CatalogTablesHelper &tableRecord) {
+        return 0;
+    }
+
+    RC RelationManager::buildIndex(const std::string &tableName, const std::string &ixName, const std::string &attributeName){
+        // get Attribute
+        std::vector<Attribute> attrs;
+        RC rc = getAttributes(tableName, attrs);
+        if (rc) return rc;
+
+        int32_t attr_pos = 0;
+        for (; attr_pos<attrs.size();attr_pos++){
+            if (attrs[attr_pos].name == attributeName)break;
+        }
+        assert(attr_pos < attrs.size());
+
+        RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
+        IndexManager& ix = IndexManager::instance();
+        FileHandle fh;
+        rc = rbfm.openFile(tableName, fh);
+        if (rc) return rc;
+
+        RBFM_ScanIterator tableIterator;
+        std::vector<std::string> projectAttrNames = {attrs[attr_pos].name};
+        rc = rbfm.scan(fh, attrs, "",
+                       NO_OP, nullptr, projectAttrNames, tableIterator);
+        if (rc) {
+            return RC(RM_ERROR::ITERATOR_BEGIN_FAIL);
+        }
+        RID curRID;
+        uint8_t rawData[PAGE_SIZE];
+        IXFileHandle ixFileHandle;
+        rc = ix.openFile(ixName, ixFileHandle);
+        if(rc) return rc;
+        while (tableIterator.getNextRecord(curRID, rawData) != RBFM_EOF) {
+
+            auto key = ((Record*)rawData)->getField<uint8_t>(0);
+            ix.insertEntry(ixFileHandle,attrs[attr_pos], (void*)key,curRID);
+        }
+
+
+        return SUCCESS;
+    }
+
 
 } // namespace PeterDB

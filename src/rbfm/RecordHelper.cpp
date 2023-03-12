@@ -17,11 +17,12 @@ namespace PeterDB {
     // ("Tom", 25, "UCIrvine", 3.1415, 100)
     // [1 byte for the null-indicators for the fields: bit 00000000] [4 bytes for the length 3] [3 bytes for the string "Tom"] [4 bytes for the integer value 25] [4 bytes for the length 8] [8 bytes for the string "UCIrvine"] [4 bytes for the float value 3.1415] [4 bytes for the integer value 100]
     // covert a raw data to a byte sequence with metadata as header
-    RC RecordHelper::rawDataToRecord(uint8_t *rawData, const std::vector<Attribute> &recordDescriptor, uint8_t *recordByte,
-                                      int16_t &recordLen) {
+    RC
+    RecordHelper::rawDataToRecord(uint8_t *rawData, const std::vector<Attribute> &recordDescriptor, uint8_t *recordByte,
+                                  int16_t &recordLen) {
 
         // 1. write flag and placeholder
-        Flag fg = RECORD_FLAG_DATA;
+        int16_t fg = RECORD_FLAG_DATA;
         memcpy(recordByte, &fg, sizeof(Flag));
 
         PlaceHolder ph = RECORD_PLACEHOLDER;
@@ -57,7 +58,7 @@ namespace PeterDB {
                     RawDataStrLen strLen;
                     // get varchar length
                     memcpy(&strLen, rawData + rawDataPos, sizeof(RawDataStrLen));
-                    if (strLen > PAGE_SIZE){
+                    if (strLen > PAGE_SIZE) {
                         LOG(ERROR) << "strLen error" << std::endl;
                     }
                     rawDataPos += sizeof(RawDataStrLen);
@@ -76,7 +77,7 @@ namespace PeterDB {
 
     // convert byte(with metadata)  with selected attributes into a struct data according to the recordDescriptor
     RC RecordHelper::recordToRawData(uint8_t record[], const std::vector<Attribute> &recordDescriptor,
-                                         std::vector<uint16_t> &selectedAttrIndex, uint8_t *rawData) {
+                                     std::vector<uint16_t> &selectedAttrIndex, uint8_t *rawData) {
         int16_t selectedAttrNum = selectedAttrIndex.size();
         // 1. get null flags
         int16_t nullFlagLenInByte = ceil(selectedAttrNum / 8.0);
@@ -121,7 +122,7 @@ namespace PeterDB {
         return 0;
     }
 
-     // check if the ith attribute in raw data is null or not
+    // check if the ith attribute in raw data is null or not
     bool RecordHelper::rawDataIsNullAttr(uint8_t *rawData, int16_t idx) {
         short byteNumber = idx / 8;
         short bitNumber = idx % 8;
@@ -130,8 +131,11 @@ namespace PeterDB {
         char tmp = rawData[byteNumber];
         return (tmp >> (7 - bitNumber)) & mask;
     }
+
     // get the raw data null flag from internal record
-    RC RecordHelper::recordGetNullFlag(uint8_t *recordByte, const std::vector<Attribute> &recordDescriptor, std::vector<uint16_t> &selectedAttrIndex, int8_t *nullFlag, int16_t nullFlagByteNum) {
+    RC RecordHelper::recordGetNullFlag(uint8_t *recordByte, const std::vector<Attribute> &recordDescriptor,
+                                       std::vector<uint16_t> &selectedAttrIndex, int8_t *nullFlag,
+                                       int16_t nullFlagByteNum) {
         int16_t AttrNum = selectedAttrIndex.size();
         // init to 0 explicitly, or will be set random value in c++
         for (int i = 0; i < nullFlagByteNum; i++) {
@@ -140,7 +144,9 @@ namespace PeterDB {
         for (int i = 0; i < AttrNum; i++) {
             int16_t attrIdx = selectedAttrIndex[i];
             short valPos = 0;
-            memcpy(&valPos, recordByte + sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum) + sizeof(AttrDir) * attrIdx, sizeof(AttrDir));
+            memcpy(&valPos,
+                   recordByte + sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum) + sizeof(AttrDir) * attrIdx,
+                   sizeof(AttrDir));
             if (valPos == ATTR_DIR_EMPTY) {
                 // is null
                 int16_t bytePos = i / 8;
@@ -152,52 +158,56 @@ namespace PeterDB {
     }
 
 
-    int16_t RecordHelper::recordGetAttrBeginPos(uint8_t* byteSeq, int16_t attrIndex) {
+    int16_t RecordHelper::recordGetAttrBeginPos(uint8_t *byteSeq, int16_t attrIndex) {
         int16_t curOffset = recordGetAttrEndPos(byteSeq, attrIndex);
-        if(curOffset == ATTR_DIR_EMPTY) {   // Null attribute
+        if (curOffset == ATTR_DIR_EMPTY) {   // Null attribute
             return RC(PAGE_ERROR::RECORD_NULL_ATTRIBUTE);
         }
         int16_t prevOffset = -1;
         // Looking for previous attribute that is not null
-        for(int i = attrIndex - 1; i >= 0; i--) {
+        for (int i = attrIndex - 1; i >= 0; i--) {
             prevOffset = recordGetAttrEndPos(byteSeq, i);
-            if(prevOffset != ATTR_DIR_EMPTY) {
+            if (prevOffset != ATTR_DIR_EMPTY) {
                 break;
             }
         }
-        if(prevOffset == -1) {
-            prevOffset = sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum) + recordGetAttrNum(byteSeq) * sizeof(AttrDir);
+        if (prevOffset == -1) {
+            prevOffset =
+                    sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum) + recordGetAttrNum(byteSeq) * sizeof(AttrDir);
         }
         return prevOffset;
     }
 
-    int16_t RecordHelper::recordGetAttrEndPos(uint8_t* byteSeq, int16_t attrIndex) {
+    int16_t RecordHelper::recordGetAttrEndPos(uint8_t *byteSeq, int16_t attrIndex) {
         int16_t dirOffset = sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum) + attrIndex * sizeof(AttrDir);
         int16_t attrEndPos;
         memcpy(&attrEndPos, byteSeq + dirOffset, sizeof(AttrDir));
         return attrEndPos;
     }
 
-    int16_t RecordHelper::recordGetAttrLen(uint8_t* byteSeq, int16_t attrIndex) {
+    int16_t RecordHelper::recordGetAttrLen(uint8_t *byteSeq, int16_t attrIndex) {
         int16_t attrEndPos = recordGetAttrEndPos(byteSeq, attrIndex);
         int16_t attrBeginPos = recordGetAttrBeginPos(byteSeq, attrIndex);
         int16_t attrLen = attrEndPos - attrBeginPos;
         return attrLen;
     }
 
-    int16_t RecordHelper::recordGetAttrNum(uint8_t* byteSeq){
+    int16_t RecordHelper::recordGetAttrNum(uint8_t *byteSeq) {
         int16_t attrNum;
         memcpy(&attrNum, byteSeq + sizeof(Flag) + sizeof(PlaceHolder), sizeof(AttrNum));
         return attrNum;
     }
 
-    bool RecordHelper::recordIsAttrNull(uint8_t* byteSeq, int16_t attrIndex){
+    bool RecordHelper::recordIsAttrNull(uint8_t *byteSeq, int16_t attrIndex) {
         int16_t end = recordGetAttrEndPos(byteSeq, attrIndex);
-        if(end == ATTR_DIR_EMPTY) return true;
+        if (end == ATTR_DIR_EMPTY) return true;
         return false;
     }
+
     // the attr will have a 1-byte null flag in the head
-    RC RecordHelper::recordGetAttr(uint8_t *recordByte, uint16_t attrIndex, const std::vector<Attribute> &recordDescriptor, uint8_t *attr) {
+    RC
+    RecordHelper::recordGetAttr(uint8_t *recordByte, uint16_t attrIndex, const std::vector<Attribute> &recordDescriptor,
+                                uint8_t *attr) {
         int8_t nullFlag[1];
         std::vector<uint16_t> attrIdx = {attrIndex};
         memset(nullFlag, 0, 1);
@@ -206,9 +216,9 @@ namespace PeterDB {
 
         int16_t attrEndPos = recordGetAttrEndPos(recordByte, attrIndex);
         int16_t attrBeginPos = recordGetAttrBeginPos(recordByte, attrIndex);
-        if (attrEndPos == -1){
+        if (attrEndPos == -1) {
             return RC(PAGE_ERROR::ATTR_IS_NULL);
-        }else{
+        } else {
             int16_t attrLen = attrEndPos - attrBeginPos;
             memcpy(attr + 1, recordByte + attrBeginPos, attrLen);
         }
@@ -218,20 +228,24 @@ namespace PeterDB {
 // ==================================================
 // todo Definitions for Record struct
 // ==================================================
-    RC Record::fromRawRecord(RawRecord* rawRecord, const std::vector<Attribute> &recordDescriptor, int16_t &recordLen){
-        this->getDirectory()->header.Flag = RECORD_FLAG_DATA;
+    RC Record::fromRawRecord(RawRecord *rawRecord, const std::vector<Attribute> &recordDescriptor, const std::vector<uint16_t> &selectedAttrIndex, int16_t &recordLen) {
+        this->getDirectory()->header.Flag = FLAG_DATA;
         this->getDirectory()->header.AttrNum = recordDescriptor.size();
-        // 3. calculate offset
-        const int nullByteSize = rawRecord->nullByteSize(recordDescriptor);
-        //int16_t nullFlagLenInByte = ceil(attrNum / 8.0);
-        //int16_t dirOffset = sizeof(Flag) + sizeof(PlaceHolder) + sizeof(AttrNum);
-        //int16_t valOffset = dirOffset + sizeof(AttrDir) * attrNum;
-        uint8_t *valPos = (uint8_t*)this->getDataSectionStart();
-        // 4. write directory and each attribute raw data
+        const int nullByteSize = rawRecord->getNullByteSize(recordDescriptor.size());
+        uint8_t *valPos = (uint8_t *) this->getDataSectionStart();
+        // write directory and each attribute raw data
         int16_t rawRecordOffset = nullByteSize, recordOffset = 0;
         // directory move right by 2 byte
         for (short i = 0; i < this->getDirectory()->header.AttrNum; i++) {
-            if (rawRecord->isNullField(i)) {
+            auto result = std::find(selectedAttrIndex.begin(), selectedAttrIndex.end(), i);
+            // ith field does not exist in the raw data
+            if (result == selectedAttrIndex.end()){
+                this->getDirectory()->getEntry(i)->setNull();
+                continue;
+            }
+            // ith exist but is null in raw data
+            auto rawIdx = result - selectedAttrIndex.begin();
+            if (rawRecord->isNullField(rawIdx)) {
                 this->getDirectory()->getEntry(i)->setNull();
                 continue;
             }
@@ -266,8 +280,43 @@ namespace PeterDB {
 // ==================================================
 // todo Definitions for RawRecord struct
 // ==================================================
-    int RawRecord::nullByteSize(const std::vector<Attribute>& recordDescriptor){
-        return nullByteSize(recordDescriptor.size());
+    RC RawRecord::fromRecord(Record *record, const std::vector<Attribute> &recordDescriptor,
+                             const std::vector<uint16_t> &selectedAttrIndex, int16_t &recordLen) {
+        int16_t selectedAttrNum = selectedAttrIndex.size();
+        // 1. init null flags
+        int16_t nullFlagLenInByte = ceil(selectedAttrNum / 8.0);
+        this->initNullByte(nullFlagLenInByte);
+
+        // 2. write into not null value
+        short rawDataPos = this->getNullByteSize(selectedAttrNum);
+        //AttrIdx is idx in record; i is idx in rawRecord;
+        for (short i = 0; i < selectedAttrNum; i++) {
+            int16_t AttrIdx = selectedAttrIndex[i];
+            if (record->getDirectory()->getEntry(AttrIdx)->isNull()) {
+                this->setFieldNull(i);
+                continue;
+            }
+
+            switch (recordDescriptor[AttrIdx].type) {
+                case TypeInt:
+                case TypeReal:
+                    memcpy(this + rawDataPos, record->getFieldPtr<int32_t>(AttrIdx), sizeof(int32_t));
+                    rawDataPos += sizeof(int32_t);
+                    break;
+                case TypeVarChar:
+                    // 1. write varchar length
+                    auto str = record->getField<std::string>(AttrIdx);
+                    auto strLen = str.size();
+                    memcpy(this + rawDataPos, &strLen, sizeof(RawDataStrLen));
+                    rawDataPos += sizeof(RawDataStrLen);
+                    // 2. write varchar
+                    memcpy(this + rawDataPos, &str, strLen);
+                    rawDataPos += strLen;
+                    break;
+            }
+        }
+
+        return SUCCESS;
     }
 }
 

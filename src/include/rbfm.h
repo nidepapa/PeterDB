@@ -6,6 +6,8 @@
 
 #include "pfm.h"
 #include <iostream>
+#include <cassert>
+#include <cmath>
 
 namespace PeterDB {
     // Record ID
@@ -27,34 +29,6 @@ namespace PeterDB {
         AttrLength length; // attribute length
     } Attribute;
 
-    // Comparison Operator (NOT needed for part 1 of the project)
-    typedef enum {
-        EQ_OP = 0, // no condition// =
-        LT_OP,      // <
-        LE_OP,      // <=
-        GT_OP,      // >
-        GE_OP,      // >=
-        NE_OP,      // !=
-        NO_OP       // no condition
-    } CompOp;
-
-
-    /********************************************************************
-    * The scan iterator is NOT required to be implemented for Project 1 *
-    ********************************************************************/
-
-# define RBFM_EOF (-1)  // end of a scan operator
-
-    //  RBFM_ScanIterator is an iterator to go through records
-    //  The way to use it is like the following:
-    //  RBFM_ScanIterator rbfmScanIterator;
-    //  rbfm.open(..., rbfmScanIterator);
-    //  while (rbfmScanIterator(rid, data) != RBFM_EOF) {
-    //    process the data;
-    //  }
-    //  rbfmScanIterator.close();
-
-
     // type for raw data
     typedef uint32_t RawDataStrLen;
     // type for record
@@ -73,6 +47,9 @@ namespace PeterDB {
     const Flag RECORD_FLAG_DATA = 0;
     const Flag RECORD_FLAG_POINTER = 1;
     const PlaceHolder RECORD_PLACEHOLDER = 0;
+    //todo neo
+    const int16_t FLAG_DATA = 0;
+    const int16_t FLAG_POINTER = 1;
 
     const SlotOffset SLOT_OFFSET_EMPTY = -1;
     const SlotLen SLOT_LEN_EMPTY = 0;
@@ -85,7 +62,172 @@ namespace PeterDB {
     const int32_t CONDITION_ATTR_IDX_INVALID = -1;
     const int32_t ATTR_IDX_INVALID = -1;
 
+/********************************************************************
+* Definition for record struct *
+********************************************************************/
+    typedef int32_t StrLenIndicator;
 
+    struct RawRecord;
+    struct Record;
+    struct Attribute;
+
+    struct Record {
+        struct Directory {
+            struct Header {
+                int16_t Flag;
+                int16_t AttrNum;
+            };
+
+            class Entry {
+            private:
+                int16_t val;
+            public:
+                bool isNull() {
+                    return val == -1;
+                }
+
+                void setNull() {
+                    val = -1;
+                }
+
+                int16_t getOffset() {
+                    assert(!isNull());
+                    return val;
+                }
+
+                void setOffset(int16_t offset) {
+                    assert(offset >= 0);
+                    val = offset;
+                }
+            };
+
+            Header header;
+
+            Entry *getEntries() const {
+                return (Entry *) ((uint8_t *) this + sizeof(Header));
+            }
+
+            Entry *getEntry(int i) const {
+                assert(i < header.AttrNum);
+                return getEntries() + i;
+            }
+
+            void *getEndOfDirectory() const {
+                return getEntries() + header.AttrNum;
+            }
+
+            int getDirectorySize() const {
+                return (uint8_t *) getEndOfDirectory() - (uint8_t *) this;
+            }
+
+
+        };
+
+        Directory *getDirectory() const {
+            return (Directory *) this;
+        }
+
+        // Get the i-th entry in the directory
+        Directory::Entry *getDirectoryEntry(int i) const {
+            return getDirectory()->getEntry(i);
+        }
+
+        // Get pointer to i-th field
+        template<typename T>
+        T *getFieldPtr(int i) const {
+            return (T *) ((uint8_t *) (this->getEndOfDirectory()) + this->getDirectoryEntry(i)->getOffset());
+        }
+
+        void *getEndOfDirectory() const {
+            return this->getDirectory()->getEndOfDirectory();
+        }
+
+        template<typename T>
+        T getField(int i) const {
+            return *getFieldPtr<T>(i);
+        }
+
+        int getDirectorySize() const {
+            return this->getDirectory()->getDirectorySize();
+        }
+
+        void *getDataSectionStart() const {
+            assert(getDirectory()->header.AttrNum >= 0);
+            return getDirectory()->getEndOfDirectory();
+        }
+        // ("Tom", 25, "UCIrvine", 3.1415, 100)
+        // [1 byte for the null-indicators for the fields: bit 00000000] [4 bytes for the length 3] [3 bytes for the string "Tom"] [4 bytes for the integer value 25] [4 bytes for the length 8] [8 bytes for the string "UCIrvine"] [4 bytes for the float value 3.1415] [4 bytes for the integer value 100]
+        // covert a raw data to a byte sequence with metadata as header
+        RC fromRawRecord(RawRecord *rawRecord, const std::vector<Attribute> &recordDescriptor, const std::vector<uint16_t> &selectedAttrIndex, int16_t &recordLen);
+
+    };
+
+    template<>
+    inline std::string Record::getField(int i) const {
+        StrLenIndicator *size = getFieldPtr<StrLenIndicator>(i);
+        char *data = (char *) (size + 1);
+        return std::string(data, *size);
+    }
+
+    struct RawRecord {
+        int getNullByteSize(int AttrNum) const{
+            return ceil(AttrNum / 8.0);
+        }
+
+        void initNullByte(int AttrNum) const{
+            memset((void*)this, 0, getNullByteSize(AttrNum));
+        }
+
+        bool isNullField(int16_t idx) {
+            short byteNumber = idx / 8;
+            short bitNumber = idx % 8;
+            uint8_t mask = 0x01;
+            // ex: 0100 0000
+            uint8_t *tmp = (uint8_t *) this + byteNumber;
+            return (*tmp >> (7 - bitNumber)) & mask;
+        }
+
+        void setFieldNull(int16_t idx) {
+            short byteNumber = idx / 8;
+            short bitNumber = idx % 8;
+            uint8_t mask = 0x01;
+            // move to the bit that need to set
+            uint8_t tmp = *((uint8_t *) this + byteNumber) >> (7 - bitNumber);
+            tmp |= mask;
+        }
+
+        RC fromRecord(Record *record, const std::vector<Attribute> &recordDescriptor,const std::vector<uint16_t> &selectedAttrIndex, int16_t &recordLen);
+    };
+
+
+    // Comparison Operator (NOT needed for part 1 of the project)
+    typedef enum {
+        EQ_OP = 0, // no condition// =
+        LT_OP,      // <
+        LE_OP,      // <=
+        GT_OP,      // >
+        GE_OP,      // >=
+        NE_OP,      // !=
+        NO_OP       // no condition
+    } CompOp;
+
+
+
+# define RBFM_EOF (-1)  // end of a scan operator
+
+    //  RBFM_ScanIterator is an iterator to go through records
+    //  The way to use it is like the following:
+    //  RBFM_ScanIterator rbfmScanIterator;
+    //  rbfm.open(..., rbfmScanIterator);
+    //  while (rbfmScanIterator(rid, data) != RBFM_EOF) {
+    //    process the data;
+    //  }
+    //  rbfmScanIterator.close();
+
+
+/********************************************************************
+* Definition for RBFM class *
+********************************************************************/
     class RBFM_ScanIterator {
     private:
         // init local data
@@ -108,11 +250,14 @@ namespace PeterDB {
         uint8_t recordData[PAGE_SIZE];
 
         bool compareInt(int a, int b);
+
         bool compareFloat(float a, float b);
+
         bool compareStr(std::string a, std::string b);
 
     public:
         RBFM_ScanIterator();
+
         ~RBFM_ScanIterator();
 
         RC begin(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
@@ -164,9 +309,10 @@ namespace PeterDB {
         // Read a record identified by the given rid.
         RC
         readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data);
+
         // read a record in internal format
         RC readInternalRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                              const RID &rid, void *data, short & recByteLen);
+                              const RID &rid, void *data, short &recByteLen);
 
         // Print the record that is passed to this utility method.
         // This method will be mainly used for debugging/testing.
@@ -311,12 +457,12 @@ namespace PeterDB {
     public:
         static RC
         rawDataToRecord(uint8_t *rawData, const std::vector<Attribute> &attrs, uint8_t *byteSeq,
-                            int16_t &recordLen);
+                        int16_t &recordLen);
 
         // convert selected Attribute to rawData
         static RC
         recordToRawData(uint8_t record[], const std::vector<Attribute> &recordDescriptor,
-                            std::vector<uint16_t> &selectedAttrIndex, uint8_t *rawData);
+                        std::vector<uint16_t> &selectedAttrIndex, uint8_t *rawData);
 
         static bool rawDataIsNullAttr(uint8_t *rawData, int16_t idx);
 
@@ -328,7 +474,8 @@ namespace PeterDB {
 
         static int16_t recordGetAttrNum(uint8_t *byteSeq);
 
-        static RC recordGetAttr(uint8_t *recordByte, uint16_t attrIndex, const std::vector<Attribute> &recordDescriptor, uint8_t *attr);
+        static RC recordGetAttr(uint8_t *recordByte, uint16_t attrIndex, const std::vector<Attribute> &recordDescriptor,
+                                uint8_t *attr);
 
 
         RecordHelper();
@@ -338,7 +485,8 @@ namespace PeterDB {
         //RC printNullAttr(char *recordByte, const std::vector<Attribute> &recordDescriptor);
         // get rawdata null flag from record data
         static RC recordGetNullFlag(uint8_t *recordByte, const std::vector<Attribute> &recordDescriptor,
-                                    std::vector<uint16_t> &selectedAttrIndex, int8_t *nullFlag, int16_t nullFlagByteNum);
+                                    std::vector<uint16_t> &selectedAttrIndex, int8_t *nullFlag,
+                                    int16_t nullFlagByteNum);
 
         static bool recordIsAttrNull(uint8_t *byteSeq, int16_t attrIndex);
 

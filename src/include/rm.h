@@ -8,6 +8,7 @@
 #include <cstring>
 #include <glog/logging.h>
 #include <math.h>
+#include <unordered_map>
 
 #include "src/include/rbfm.h"
 
@@ -16,27 +17,28 @@ namespace PeterDB {
 
     const std::string CATALOG_TABLES = "Tables";
     const std::string CATALOG_COLUMNS = "Columns";
+    const std::string CATALOG_INDEXES = "Indexes";
 
     const int CATALOG_VARCHAR_LEN = 50;
+    const int32_t CATALOG_TABLES_ATTR_NUM = 3;
     const std::string CATALOG_TABLES_TABLEID = "table-id";
     const std::string CATALOG_TABLES_TABLENAME = "table-name";
     const std::string CATALOG_TABLES_FILENAME = "file-name";
-    //const std::string CATALOG_TABLES_FLAG = "flag";
 
+    const int32_t CATALOG_COLUMNS_ATTR_NUM = 5;
     const std::string CATALOG_COLUMNS_TABLEID = "table-id";
     const std::string CATALOG_COLUMNS_COLUMNNAME = "column-name";
     const std::string CATALOG_COLUMNS_COLUMNTYPE = "column-type";
     const std::string CATALOG_COLUMNS_COLUMNLENGTH = "column-length";
     const std::string CATALOG_COLUMNS_COLUMNPOS = "column-position";
 
-    const int32_t CATALOG_TABLES_ATTR_NUM = 4;
-    const int32_t CATALOG_COLUMNS_ATTR_NUM = 5;
+    const int32_t CATALOG_INDEXES_ATTR_NUM = 3;
+    const std::string CATALOG_INDEXES_TABLEID = "table-id";
+    const std::string CATALOG_INDEXES_ATTRNAME = "attribute-name";
+    const std::string CATALOG_INDEXES_FILENAME = "file-name";
 
     const int32_t DEFAULT_COLUMN_INT = -1;
     const int32_t INVALID_TABLEID = -1;
-    // flag value
-    //const int32_t TABLES_FLAG_USER = 0;
-    //const int32_t TABLES_FLAG_SYS = 1;
 
 
     const std::vector<Attribute> catalogTablesSchema = std::vector<Attribute>{
@@ -52,6 +54,51 @@ namespace PeterDB {
             Attribute{CATALOG_COLUMNS_COLUMNPOS, TypeInt, sizeof(int32_t)},
     };
 
+    const std::vector<Attribute> catalogIndexesSchema = std::vector<Attribute>{
+            Attribute{CATALOG_INDEXES_TABLEID, TypeInt, sizeof(int32_t)},
+            Attribute{CATALOG_INDEXES_ATTRNAME, TypeVarChar, CATALOG_VARCHAR_LEN},
+            Attribute{CATALOG_INDEXES_FILENAME, TypeVarChar, CATALOG_VARCHAR_LEN}
+    };
+
+
+    class CatalogTablesHelper {
+    public:
+        int32_t table_id;
+        std::string table_name;
+        std::string file_name;
+        FileHandle fh;
+
+        CatalogTablesHelper();    // Constructor
+        CatalogTablesHelper(int32_t id, const std::string &name, const std::string &file);
+
+        CatalogTablesHelper(FileHandle &fileHandle);    // Constructor
+
+        ~CatalogTablesHelper();    // Destructor
+
+        RC getRecordRawData(uint8_t *apiData);
+
+        int32_t getTableID(const std::string &tableName);
+    };
+
+    class CatalogColumnsHelper {
+    public:
+        int32_t table_id;
+        std::string column_name;
+        int32_t column_type;
+        int32_t column_length;
+        int32_t column_position;
+
+        CatalogColumnsHelper();    // Constructor
+        CatalogColumnsHelper(int32_t id, const std::string &name, int32_t column_type, int32_t column_length,
+                             int32_t column_position);
+
+        CatalogColumnsHelper(uint8_t *rawData, const std::vector<std::string> &attrNames);
+
+        ~CatalogColumnsHelper();    // Destructor
+
+        RC getRecordRawData(uint8_t *apiData);
+        Attribute getAttribute();
+    };
 
     // RM_ScanIterator is an iterator to go through tuples
     class RM_ScanIterator {
@@ -86,8 +133,7 @@ namespace PeterDB {
     private:
         FileHandle fhTables;
         FileHandle fhColumns;
-
-        bool isTableNameValid(const std::string name);
+        FileHandle fhIndexes;
 
         bool isTableNameEmpty(const std::string name);
 
@@ -97,11 +143,20 @@ namespace PeterDB {
 
         bool isCatalogReady();
 
+        std::string getIndexFileName(const std::string& tableName, const std::string& attrName);
+
+        RC getTableMetaData(const std::string& tableName, CatalogTablesHelper& tableRecord);
+        RC getTableMetaDataAndRID(const std::string& tableName, CatalogTablesHelper& tableRecord, RID& rid);
+        RC getIndexes(const std::string& tableName, std::unordered_map<std::string, std::string>& indexedAttrAndFileName);
+
+        RC insertIndexIntoCatalog(const int32_t tableID, const std::string& attrName, const std::string& fileName);
+
+        RC buildIndex(const std::string &tableName, const std::string &ixName, const std::string &attributeName);
+
     public:
         static RelationManager &instance();
         static void scanIteratorValue(const std::string value,  uint8_t *scanVal);
-        static void* scanIteratorValue(const int value);
-        static void* scanIteratorValue(const float value);
+
         RC createCatalog();
 
         RC openCatalog();
@@ -168,45 +223,6 @@ namespace PeterDB {
         RelationManager(const RelationManager &);                           // Prevent construction by copying
         RelationManager &operator=(const RelationManager &);                // Prevent assignment
 
-    };
-
-    class CatalogTablesHelper {
-    public:
-        int32_t table_id;
-        std::string table_name;
-        std::string file_name;
-        FileHandle fh;
-
-        CatalogTablesHelper();    // Constructor
-        CatalogTablesHelper(int32_t id, const std::string &name, const std::string &file);
-
-        CatalogTablesHelper(FileHandle &fileHandle);    // Constructor
-
-        ~CatalogTablesHelper();    // Destructor
-
-        RC getRecordRawData(uint8_t *apiData);
-
-        int32_t getTableID(const std::string &tableName);
-    };
-
-    class CatalogColumnsHelper {
-    public:
-        int32_t table_id;
-        std::string column_name;
-        int32_t column_type;
-        int32_t column_length;
-        int32_t column_position;
-
-        CatalogColumnsHelper();    // Constructor
-        CatalogColumnsHelper(int32_t id, const std::string &name, int32_t column_type, int32_t column_length,
-                             int32_t column_position);
-
-        CatalogColumnsHelper(uint8_t *rawData, const std::vector<std::string> &attrNames);
-
-        ~CatalogColumnsHelper();    // Destructor
-
-        RC getRecordRawData(uint8_t *apiData);
-        Attribute getAttribute();
     };
 
 } // namespace PeterDB

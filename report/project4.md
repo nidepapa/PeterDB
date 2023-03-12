@@ -2,12 +2,10 @@
 
 
 ### 1. Basic information
-- Team #:
-- Github Repo Link:
-- Student 1 UCI NetID:
-- Student 1 Name:
-- Student 2 UCI NetID (if applicable):
-- Student 2 Name (if applicable):
+- Team #: Yufan Zhao
+- Github Repo Link:https://github.com/UCI-Chenli-teaching/cs222p-winter23-nidepapa
+- Student 1 UCI NetID: 88127297
+- Student 1 Name: yufan zhao
 
 
 ### 2. Catalog information about Index

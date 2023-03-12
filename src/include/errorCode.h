@@ -39,6 +39,7 @@ namespace PeterDB {
         FILE_NOT_OPEN,
         PAGE_EXCEEDED,
         SLOT_INVALID,
+        CATALOG_NOT_OPEN,
     };
 
     enum class RM_ERROR:int{
@@ -48,7 +49,6 @@ namespace PeterDB {
         TABLE_ACCESS_DENIED,
         FILE_OPEN_FAIL,
         FILE_CLOSE_FAIL,
-        FILE_NOT_EXIST,
         TUPLE_INSERT_FAIL,
         TUPLE_DEL_FAIL,
         TUPLE_UPDATE_FAIL,
@@ -67,7 +67,6 @@ namespace PeterDB {
         ERR_FILE_OPEN_FAIL,
         FILE_NOT_OPEN,
         FILE_NO_ENOUGH_PAGE,
-        FILE_READ_ONE_PAGE_FAIL,
         ROOT_NOT_EXIST,
         FILE_EXIST,
         FILE_NOT_EXIST,
@@ -77,7 +76,6 @@ namespace PeterDB {
         LEAF_INSERT_ENTRY_FAIL,
         NOLEAF_GETTARGET_CHILD_FAIL,
         NOLEAF_INSERT_ENTRY_FAIL,
-        NOLEAF_SPLIT_FAIL,
         LEAF_FOUND_FAIL,
         LEAF_ENTRY_NOT_EXIST,
         KEY_TYPE_INVALID,

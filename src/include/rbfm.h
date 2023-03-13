@@ -196,6 +196,10 @@ namespace PeterDB {
             tmp |= mask;
         }
 
+        void* dataSection(const int AttrNum) {
+            return (uint8_t*)this + this->getNullByteSize(AttrNum);
+        }
+
         RC fromRecord(Record *record, const std::vector<Attribute> &recordDescriptor,const std::vector<uint16_t> &selectedAttrIndex, int16_t &recordLen);
     };
 
@@ -271,6 +275,14 @@ namespace PeterDB {
 
         // use this method to check if the attribute of current record meet the conditions
         bool recordMeetCondition(uint8_t *attr, int16_t attrLen);
+
+        std::vector<std::uint16_t> getSelectedAttrIdx(){
+            return selectedAttrIdx;
+        }
+
+        std::vector<Attribute> getRecordDescriptor(){
+            return recordDescriptor;
+        }
 
         RC close() { return SUCCESS; };
     };

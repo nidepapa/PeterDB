@@ -80,6 +80,21 @@ namespace PeterDB {
         int32_t getTableID(const std::string &tableName);
     };
 
+    class CatalogIndexesHelper {
+    public:
+        int32_t table_id;
+        std::string attr_name;
+        std::string file_name;
+
+        CatalogIndexesHelper();
+        CatalogIndexesHelper(int32_t id, const std::string& attr, const std::string& file);
+        CatalogIndexesHelper(uint8_t* rawData, const std::vector<std::string>& attrNames);
+
+        ~CatalogIndexesHelper() = default;
+
+
+    };
+
     class CatalogColumnsHelper {
     public:
         int32_t table_id;
@@ -146,10 +161,10 @@ namespace PeterDB {
         std::string getIndexFileName(const std::string& tableName, const std::string& attrName);
 
         RC getTableMetaData(const std::string& tableName, CatalogTablesHelper& tableRecord);
-        RC getTableMetaDataAndRID(const std::string& tableName, CatalogTablesHelper& tableRecord, RID& rid);
+
         RC getIndexes(const std::string& tableName, std::unordered_map<std::string, std::string>& indexedAttrAndFileName);
 
-        RC insertIndexIntoCatalog(const int32_t tableID, const std::string& attrName, const std::string& fileName);
+        RC insertIndexToCatalog(const int32_t tableID, const std::string& attrName, const std::string& fileName);
 
         RC buildIndex(const std::string &tableName, const std::string &ixName, const std::string &attributeName);
 
@@ -166,6 +181,8 @@ namespace PeterDB {
         RC insertMetaDataToCatalog(const std::string &tableName, const std::vector<Attribute> schema);
 
         RC deleteMetaDataFromCatalog(int32_t tableID);
+
+        RC deleteIndexFromCatalog(int32_t tableID, std::string attrName);
 
         int32_t getNewTableID();
 

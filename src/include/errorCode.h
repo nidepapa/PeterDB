@@ -59,6 +59,8 @@ namespace PeterDB {
         DESCRIPTOR_GET_FAIL,
         CATALOG_MISSING,
         CATALOG_OPEN_FAIL,
+        RECORD_NOT_EXIST,
+        INDEX_NOT_EXIST
     };
 
     enum class IX_ERROR:int{

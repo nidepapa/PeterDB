@@ -11,6 +11,12 @@
 ### 2. Catalog information about Index
 - Show your catalog information about an index (tables, columns).
 
+| name      | type        | length |
+|-----------|-------------|--------|
+| table_id  | int         |        |
+| attr_name | varchar(50) |        |
+| file_name | varchar(50) |        |
+
 
 
 ### 3. Filter

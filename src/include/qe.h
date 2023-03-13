@@ -157,7 +157,10 @@ namespace PeterDB {
     };
 
     class Filter : public Iterator {
-        // Filter operator
+    private:
+        Iterator *iter;
+        Condition cond;
+        std::vector<Attribute> attrs;
     public:
         Filter(Iterator *input,               // Iterator of input R
                const Condition &condition     // Selection condition
@@ -169,16 +172,25 @@ namespace PeterDB {
 
         // For attribute in std::vector<Attribute>, name it as rel.attr
         RC getAttributes(std::vector<Attribute> &attrs) const override;
+
+        bool isRecordMeetCondition(void *data);
     };
 
     class Project : public Iterator {
         // Projection operator
+        Iterator *iter;
+        std::vector<Attribute> attrs;
+        // idx means the idx in attrs;
+        std::vector<int> projectAttrIdx;
+        uint8_t inputRawData[PAGE_SIZE];
     public:
         Project(Iterator *input,                                // Iterator of input R
                 const std::vector<std::string> &attrNames);     // std::vector containing attribute names
         ~Project() override;
 
         RC getNextTuple(void *data) override;
+
+        RC ProjectToSelectedAttr(void *data);
 
         // For attribute in std::vector<Attribute>, name it as rel.attr
         RC getAttributes(std::vector<Attribute> &attrs) const override;
@@ -263,6 +275,29 @@ namespace PeterDB {
         // output attrName = "MAX(rel.attr)"
         RC getAttributes(std::vector<Attribute> &attrs) const override;
     };
+
+    class QEHelper {
+    public:
+        static RC concatRecords(uint8_t* output, uint8_t* outerRecord, const std::vector<Attribute>& outerAttr,
+                                uint8_t* innerRecord, const std::vector<Attribute>& innerAttr);
+        static bool isSameKey(uint8_t* key1, uint8_t* key2, AttrType& type);
+
+        template<typename T>
+        static bool performOper(const T& oper1, const T& oper2, CompOp op) {
+            switch(op) {
+                case EQ_OP: return oper1 == oper2;
+                case LT_OP: return oper1 < oper2;
+                case LE_OP: return oper1 <= oper2;
+                case GT_OP: return oper1 > oper2;
+                case GE_OP: return oper1 >= oper2;
+                case NE_OP: return oper1 != oper2;
+                default:
+                    LOG(ERROR) << "Comparison Operator Not Supported!" << std::endl;
+                    return false;
+            }
+        }
+    };
 } // namespace PeterDB
+
 
 #endif // _qe_h_

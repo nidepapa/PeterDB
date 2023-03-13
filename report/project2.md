@@ -16,7 +16,7 @@
 | table_id   | int         |        |
 | table_name | varchar(50) |        |
 | file_name  | varchar(50) |        |
-| flag       | short       |        |
+| ~~flag~~   | ~~short~~   |        |
 
 flag: 1 - system table 2 - user table (used as authorization control)
 

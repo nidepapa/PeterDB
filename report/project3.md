@@ -61,10 +61,10 @@
 not applicable
 
 - Duplicate key span in a page
-  we have different key in leaf node. even the key is identical, RIDs are different.
+  use a composite key with (key_value, rid) to distinguish each key
 
 - Duplicate key span multiple pages (if applicable)
-  not applicable
+  use a composite key with (key_value, rid) to distinguish each key
 
 ### 6. Implementation Detail
 

@@ -11,6 +11,7 @@
 #include <unordered_map>
 
 #include "src/include/rbfm.h"
+#include "ix.h"
 
 namespace PeterDB {
 #define RM_EOF (-1)  // end of a scan operator
@@ -134,10 +135,15 @@ namespace PeterDB {
 
     // RM_IndexScanIterator is an iterator to go through index entries
     class RM_IndexScanIterator {
+    private:
+        IX_ScanIterator ixIterator;
     public:
-        RM_IndexScanIterator();    // Constructor
-        ~RM_IndexScanIterator();    // Destructor
+        RM_IndexScanIterator() = default;    // Constructor
+        ~RM_IndexScanIterator() = default;    // Destructor
 
+       RC open(IXFileHandle* ixFileHandle, const Attribute& attr,
+        const uint8_t* lowKey, const uint8_t* highKey,
+        bool lowKeyInclusive, bool highKeyInclusive);
         // "key" follows the same format as in IndexManager::insertEntry()
         RC getNextEntry(RID &rid, void *key);    // Get next matching entry
         RC close();                              // Terminate index scan

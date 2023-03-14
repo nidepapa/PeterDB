@@ -392,7 +392,7 @@ namespace PeterDB {
 
     template<typename  T>
     T * RawRecord::getFieldPtr(const std::vector<Attribute> &recordDescriptor, const std::string attrName) const{
-        // todo
+
         auto valPos = (uint8_t*)this->dataSection(recordDescriptor.size());
         for (int i= 0; i < recordDescriptor.size(); i++){
             if (this->isNullField(i))continue;

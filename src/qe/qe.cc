@@ -237,6 +237,7 @@ namespace PeterDB {
     RC BNLJoin::getAttributes(std::vector<Attribute> &attrs) const {
         attrs.clear();
         attrs.insert(attrs.end(), joinedAttrs.begin(), joinedAttrs.end());
+        return SUCCESS;
     }
 
     RC BNLJoin::loadBlock() {
@@ -277,17 +278,62 @@ namespace PeterDB {
     }
 
     INLJoin::INLJoin(Iterator *leftIn, IndexScan *rightIn, const Condition &condition) {
+        this->outer = leftIn;
+        this->inner = rightIn;
+        this->cond = condition;
+        this->outerIterStatus = 0;
+
+        leftIn->getAttributes(this->outerAttrs);
+        rightIn->getAttributes(this->innerAttrs);
+        this->joinedAttrs.insert(joinedAttrs.end(), outerAttrs.begin(), outerAttrs.end());
+        this->joinedAttrs.insert(joinedAttrs.end(), innerAttrs.begin(), innerAttrs.end());
+
+        for(auto& attr: this->outerAttrs) {
+            if(attr.name == cond.lhsAttr) {
+                this->joinAttr = attr;
+                break;
+            }
+        }
+
+        outerIterStatus = outer->getNextTuple(outerReadBuffer);
+        if(outerIterStatus != QE_EOF) {
+            auto outerRecord = ((RawRecord*)outerReadBuffer);
+            outerKey = outerRecord->getFieldPtr<uint8_t>(outerAttrs, joinAttr.name);
+            inner->setIterator(outerKey, outerKey, true, true);
+        }
 
     }
 
     INLJoin::~INLJoin() = default;
 
     RC INLJoin::getNextTuple(void *data) {
-        return -1;
+        while(outerIterStatus != QE_EOF) {
+            auto outerRecord = ((RawRecord*)outerReadBuffer);
+            outerKey = outerRecord->getFieldPtr<uint8_t>(outerAttrs, joinAttr.name);
+            while(inner->getNextTuple(innerReadBuffer) == SUCCESS) {
+                auto innerRecord = ((RawRecord*)innerReadBuffer);
+                innerKey = innerRecord->getFieldPtr<uint8_t>(innerAttrs, joinAttr.name);
+                if(QEHelper::isSameKey(outerKey, innerKey, joinAttr.type)) {
+                    outerRecord->join(outerAttrs, innerRecord, innerAttrs, (RawRecord*)data, joinedAttrs);
+                    return 0;
+                }
+            }
+
+            outerIterStatus = outer->getNextTuple(outerReadBuffer);
+            if(outerIterStatus != QE_EOF) {
+                auto outerRecord = ((RawRecord*)outerReadBuffer);
+                outerKey = outerRecord->getFieldPtr<uint8_t>(outerAttrs, joinAttr.name);
+                inner->setIterator(outerKey, outerKey, true, true);
+            }
+        }
+
+        return QE_EOF;
     }
 
     RC INLJoin::getAttributes(std::vector<Attribute> &attrs) const {
-        return -1;
+        attrs.clear();
+        attrs.insert(attrs.end(), joinedAttrs.begin(), joinedAttrs.end());
+        return SUCCESS;
     }
 
     GHJoin::GHJoin(Iterator *leftIn, Iterator *rightIn, const Condition &condition, const unsigned int numPartitions) {
@@ -307,19 +353,106 @@ namespace PeterDB {
     }
 
     Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, AggregateOp op) {
+        this->input = input;
+        this->aggAttr = aggAttr;
+        this->op = op;
+        this->isGroup = false;
+        this->result_pos = 0;
+
+        input->getAttributes(this->inputAttrs);
+
+        // calculate result;
+        float val;
+        int32_t intKey;
+        float floatKey;
+        switch (op) {
+            case MAX: val = LONG_MIN; break;
+            case MIN: val = LONG_MAX; break;
+            case SUM:
+            case AVG:
+            case COUNT:
+                val = 0;
+                break;
+        }
+
+        int32_t count = 0;
+        auto rawRecord = (RawRecord*)readBuffer;
+        while(input->getNextTuple(readBuffer) == 0) {
+            count++;
+            switch (op) {
+                case MAX:
+                    if(aggAttr.type == TypeInt) {
+                        intKey = rawRecord->getField<int32_t>(inputAttrs, aggAttr.name);
+                        val = std::max(val, (float)intKey);
+                    }
+                    else if(aggAttr.type == TypeReal) {
+                        floatKey= rawRecord->getField<float>(inputAttrs, aggAttr.name);
+                        val = std::max(val, floatKey);
+                    }
+                    break;
+                case MIN:
+                    if(aggAttr.type == TypeInt) {
+                        intKey = rawRecord->getField<int32_t>(inputAttrs, aggAttr.name);
+                        val = std::min(val, (float)intKey);
+                    }
+                    else if(aggAttr.type == TypeReal) {
+                        floatKey= rawRecord->getField<float>(inputAttrs, aggAttr.name);
+                        val = std::min(val, floatKey);
+                    }
+                    break;
+                case SUM:
+                case AVG:
+                    if(aggAttr.type == TypeInt) {
+                        intKey = rawRecord->getField<int32_t>(inputAttrs, aggAttr.name);
+                        val += intKey;
+                    }
+                    else if(aggAttr.type == TypeReal) {
+                        floatKey= rawRecord->getField<float>(inputAttrs, aggAttr.name);
+                        val += floatKey;
+                    }
+                    break;
+                case COUNT:
+                    break;
+            }
+        }
+        // save result;
+        switch (op) {
+            case MAX:
+            case MIN:
+            case SUM:
+                result.push_back(val);
+                break;
+            case COUNT:
+                result.push_back(count);
+                break;
+            case AVG:
+                result.push_back(val / count);
+                break;
+        }
 
     }
 
     Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, const Attribute &groupAttr, AggregateOp op) {
-
+        // todo group
     }
 
-    Aggregate::~Aggregate() {
+    Aggregate::~Aggregate() = default;
 
-    }
 
     RC Aggregate::getNextTuple(void *data) {
-        return -1;
+        auto output = (RawRecord*)data;
+        if(isGroup) {
+            // todo group
+        }
+        else {
+            if(result_pos >= result.size()) {
+                return QE_EOF;
+            }
+            output->initNullByte(1);
+            memcpy(output->dataSection(1),&result[result_pos], sizeof(float ));
+        }
+        result_pos++;
+        return SUCCESS;
     }
 
     RC Aggregate::getAttributes(std::vector<Attribute> &attrs) const {

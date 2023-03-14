@@ -244,15 +244,17 @@ namespace PeterDB {
         Iterator* outer;
         IndexScan* inner;
         Condition cond;
+        int16_t outerIterStatus;
 
         std::vector<Attribute> outerAttrs, innerAttrs;
         std::vector<Attribute> joinedAttrs;
         Attribute joinAttr;
 
-        uint8_t outerReadBuffer[PAGE_SIZE] = {};
-        uint8_t innerReadBuffer[PAGE_SIZE] = {};
-        uint8_t outerKeyBuffer[PAGE_SIZE] = {};
-        uint8_t innerKeyBuffer[PAGE_SIZE] = {};
+        uint8_t outerReadBuffer[PAGE_SIZE];
+        uint8_t innerReadBuffer[PAGE_SIZE];
+
+        uint8_t *outerKey;
+        uint8_t *innerKey;
 
     public:
         INLJoin(Iterator *leftIn,           // Iterator of input R
@@ -288,6 +290,18 @@ namespace PeterDB {
 
     class Aggregate : public Iterator {
         // Aggregation operator
+        Iterator* input;
+        Attribute aggAttr;
+        AggregateOp op;
+        Attribute groupAttr;
+        bool isGroup = false;
+
+        std::vector<Attribute> inputAttrs;
+        uint8_t readBuffer[PAGE_SIZE];
+
+        std::vector<float> result;
+        int32_t result_pos;
+
     public:
         // Mandatory
         // Basic aggregation
@@ -316,9 +330,20 @@ namespace PeterDB {
 
     class QEHelper {
     public:
-        static RC concatRecords(uint8_t* output, uint8_t* outerRecord, const std::vector<Attribute>& outerAttr,
-                                uint8_t* innerRecord, const std::vector<Attribute>& innerAttr);
-        static bool isSameKey(uint8_t* key1, uint8_t* key2, AttrType& type);
+        static bool isSameKey(uint8_t* key1, uint8_t* key2, AttrType& type){
+            switch (type) {
+                case TypeInt:
+                    return memcmp(key1, key2, sizeof(int32_t)) == 0;
+                case TypeReal:
+                    return memcmp(key1, key2, sizeof(float)) == 0;
+                case TypeVarChar:
+                    int32_t strLen1, strLen2;
+                    strLen1 = *(int32_t *)key1;
+                    strLen2 = *(int32_t *)key2;
+                    return strLen1 == strLen2 && memcmp(key1, key2, sizeof(int32_t) + strLen1) == 0;
+            }
+            return false;
+        }
 
         template<typename T>
         static bool performOper(const T& oper1, const T& oper2, CompOp op) {

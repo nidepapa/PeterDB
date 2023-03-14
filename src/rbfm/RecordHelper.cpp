@@ -4,7 +4,6 @@
 #include <cmath>
 #include "src/include/rbfm.h"
 #include "src/include/errorCode.h"
-#include "src/include/record.h"
 #include <iostream>
 #include <cstring>
 #include <glog/logging.h>
@@ -318,5 +317,99 @@ namespace PeterDB {
 
         return SUCCESS;
     }
+
+    RC RawRecord::size(const std::vector<Attribute>& attributes, int *size) const {
+        int offset = 0;
+        // Increment by null byte size
+        offset += getNullByteSize(attributes.size());
+
+        for (int i = 0; i < attributes.size(); i++) {
+            const auto& attr = attributes[i];
+            if(this->isNullField(i)) {
+                continue;
+            }
+            switch (attr.type) {
+                case TypeInt: {
+                    offset += sizeof(uint32_t);
+                    break;
+                }
+                case TypeReal: {
+                    offset += sizeof(float);
+                    break;
+                }
+                case TypeVarChar: {
+                    const int32_t strLen = *(int32_t*)((const uint8_t*)(this) + offset);
+                    offset += sizeof(strLen) + strLen;
+                    break;
+                }
+                default: {
+                    CHECK(false);
+                    break;
+                }
+            }
+        }
+        *size = offset;
+        return SUCCESS;
+    }
+
+    RC RawRecord::join(const std::vector<Attribute> &attrs, const RawRecord *rightRecord,
+                       const std::vector<Attribute> &rightAttrs, RawRecord *joinRecord,
+                       const std::vector<Attribute> &joinAttrs) const {
+        // Set null byte
+        memset(joinRecord, 0, joinRecord->getNullByteSize(joinAttrs.size()));
+        int offset = 0;
+        for (int i = 0; i < attrs.size(); i++) {
+            if (this->isNullField(i)) {
+                joinRecord->setFieldNull(i + offset);
+            }
+        }
+        offset += attrs.size();
+        for (int i = 0; i < rightAttrs.size(); i++) {
+            if (rightRecord->isNullField(i)) {
+                joinRecord->setFieldNull(i + offset);
+            }
+        }
+
+        // Copy left data
+        uint8_t *dest = (uint8_t*)joinRecord->dataSection(joinAttrs.size());
+        int leftSize;
+        this->size(attrs, &leftSize);
+        int leftDataSectionSize = leftSize - this->getNullByteSize(attrs.size());
+        memcpy(dest, this->dataSection(attrs.size()), leftDataSectionSize);
+        dest += leftDataSectionSize;
+
+        // Copy right data
+        int rightSize;
+        this->size(rightAttrs, &rightSize);
+        int rightDataSectionSize = rightSize - rightRecord->getNullByteSize(rightAttrs.size());
+        memcpy(dest, rightRecord->dataSection(rightAttrs.size()), rightDataSectionSize);
+
+        int joinSize;
+        joinRecord->size(joinAttrs, &joinSize);
+        assert(joinRecord->getNullByteSize(joinAttrs.size()) + leftDataSectionSize + rightDataSectionSize == joinSize);
+        return 0;
+    }
+
+    template<typename  T>
+    T * RawRecord::getFieldPtr(const std::vector<Attribute> &recordDescriptor, const std::string attrName) const{
+        // todo
+        auto valPos = (uint8_t*)this->dataSection(recordDescriptor.size());
+        for (int i= 0; i < recordDescriptor.size(); i++){
+            if (this->isNullField(i))continue;
+            if (recordDescriptor[i].name == attrName)return (T*)valPos;
+            switch(recordDescriptor[i].type){
+                case TypeInt:
+                case TypeReal:
+                    valPos += sizeof(int32_t);
+                case TypeVarChar:
+                    int32_t strLen = 0;
+                    memcpy(&strLen, valPos, sizeof(int32_t));
+                    valPos += strLen + sizeof(int32_t);
+            }
+        }
+        return (T*)valPos;
+    }
+
+
 }
 

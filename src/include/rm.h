@@ -88,7 +88,6 @@ namespace PeterDB {
         std::string file_name;
 
         CatalogIndexesHelper();
-        CatalogIndexesHelper(int32_t id, const std::string& attr, const std::string& file);
         CatalogIndexesHelper(uint8_t* rawData, const std::vector<std::string>& attrNames);
 
         ~CatalogIndexesHelper() = default;
@@ -109,7 +108,6 @@ namespace PeterDB {
                              int32_t column_position);
 
         CatalogColumnsHelper(uint8_t *rawData, const std::vector<std::string> &attrNames);
-
         ~CatalogColumnsHelper();    // Destructor
 
         RC getRecordRawData(uint8_t *apiData);
@@ -156,62 +154,46 @@ namespace PeterDB {
         FileHandle fhColumns;
         FileHandle fhIndexes;
 
+        std::vector<IXFileHandle*> ixScanFHList;
+        std::unordered_map<std::string, IXFileHandle*> ixFHMap;
+
         bool isTableNameEmpty(const std::string name);
-
         bool isTableIdValid(int32_t tableID);
-
         bool isTableAccessible(const std::string name);
+        int32_t getNewTableID();
 
         bool isCatalogReady();
+        RC insertIndexToCatalog(const int32_t tableID, const std::string& attrName, const std::string& fileName);
+        RC insertMetaDataToCatalog(const std::string &tableName, const std::vector<Attribute> schema);
+        RC getTableMetaData(const std::string& tableName, CatalogTablesHelper& tableRecord);
+        RC deleteMetaDataFromCatalog(int32_t tableID);
+        RC deleteIndexFromCatalog(int32_t tableID, std::string attrName);
 
         std::string getIndexFileName(const std::string& tableName, const std::string& attrName);
-
-        RC getTableMetaData(const std::string& tableName, CatalogTablesHelper& tableRecord);
-
         RC getIndexes(const std::string& tableName, std::unordered_map<std::string, std::string>& indexedAttrAndFileName);
-
-        RC insertIndexToCatalog(const int32_t tableID, const std::string& attrName, const std::string& fileName);
-
         RC buildIndex(const std::string &tableName, const std::string &ixName, const std::string &attributeName);
+        RC insertIndex(const std::string &tableName, const void *data, const std::vector<Attribute>recordDescriptor, RID &rid);
+        RC deleteIndex(const std::string &tableName, const void *data, const std::vector<Attribute>recordDescriptor, RID &rid);
+        RC updateIndex(const std::string &tableName, const void *oldData, const void *newData, const std::vector<Attribute>recordDescriptor, RID &rid);
 
     public:
         static RelationManager &instance();
         static void scanIteratorValue(const std::string value,  uint8_t *scanVal);
 
         RC createCatalog();
-
         RC openCatalog();
-
         RC deleteCatalog();
-
-        RC insertMetaDataToCatalog(const std::string &tableName, const std::vector<Attribute> schema);
-
-        RC deleteMetaDataFromCatalog(int32_t tableID);
-
-        RC deleteIndexFromCatalog(int32_t tableID, std::string attrName);
-
-        int32_t getNewTableID();
-
         RC createTable(const std::string &tableName, const std::vector<Attribute> &attrs);
-
         RC deleteTable(const std::string &tableName);
-
         RC getAttributes(const std::string &tableName, std::vector<Attribute> &attrs);
-
         RC insertTuple(const std::string &tableName, const void *data, RID &rid);
-
         RC deleteTuple(const std::string &tableName, const RID &rid);
-
         RC updateTuple(const std::string &tableName, const void *data, const RID &rid);
-
         RC readTuple(const std::string &tableName, const RID &rid, void *data);
-
         // Print a tuple that is passed to this utility method.
         // The format is the same as printRecord().
         RC printTuple(const std::vector<Attribute> &attrs, const void *data, std::ostream &out);
-
         RC readAttribute(const std::string &tableName, const RID &rid, const std::string &attributeName, void *data);
-
         // Scan returns an iterator to allow the caller to go through the results one by one.
         // Do not store entire results in the scan iterator.
         RC scan(const std::string &tableName,
@@ -228,9 +210,7 @@ namespace PeterDB {
 
         // QE IX related
         RC createIndex(const std::string &tableName, const std::string &attributeName);
-
         RC destroyIndex(const std::string &tableName, const std::string &attributeName);
-
         // indexScan returns an iterator to allow the caller to go through qualified entries in index
         RC indexScan(const std::string &tableName,
                      const std::string &attributeName,

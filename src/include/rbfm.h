@@ -178,7 +178,7 @@ namespace PeterDB {
             memset((void*)this, 0, getNullByteSize(AttrNum));
         }
 
-        bool isNullField(int16_t idx) {
+        bool isNullField(int16_t idx) const {
             short byteNumber = idx / 8;
             short bitNumber = idx % 8;
             uint8_t mask = 0x01;
@@ -196,12 +196,30 @@ namespace PeterDB {
             tmp |= mask;
         }
 
-        void* dataSection(const int AttrNum) {
+        void * dataSection(const int AttrNum) const {
             return (uint8_t*)this + this->getNullByteSize(AttrNum);
         }
 
+        template<typename T>
+        T * getFieldPtr(const std::vector<Attribute> &recordDescriptor,  std::string attrName) const;
+
+        template<typename T>
+        T getField(const std::vector<Attribute> &recordDescriptor,std::string attrName) const{
+            return *getFieldPtr<T>(recordDescriptor, attrName);
+        }
+
         RC fromRecord(Record *record, const std::vector<Attribute> &recordDescriptor,const std::vector<uint16_t> &selectedAttrIndex, int16_t &recordLen);
+        RC size(const std::vector<Attribute>& attributes, int *size) const;
+        RC join(const std::vector<Attribute>& attrs, const RawRecord* rightRecord, const std::vector<Attribute>& rightAttrs,
+                RawRecord* joinRecord, const std::vector<Attribute>& joinAttrs) const;
     };
+
+    template<>
+    inline std::string RawRecord::getField(const std::vector<Attribute> &recordDescriptor, std::string attrName) const {
+        StrLenIndicator *size = this->getFieldPtr<StrLenIndicator>(recordDescriptor, attrName);
+        char *data = (char *) (size + 1);
+        return std::string(data, *size);
+    }
 
 
     // Comparison Operator (NOT needed for part 1 of the project)

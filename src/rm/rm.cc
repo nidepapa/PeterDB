@@ -15,7 +15,16 @@ namespace PeterDB {
 
     RelationManager::RelationManager() = default;
 
-    RelationManager::~RelationManager() = default;
+    RelationManager::~RelationManager() {
+        for(auto& fh: ixScanFHList) {
+            delete fh;
+        }
+        for(auto& p: ixFHMap) {
+            delete p.second;
+        }
+        ixScanFHList.clear();
+        ixFHMap.clear();
+    };
 
     RelationManager::RelationManager(const RelationManager &) = default;
 
@@ -206,7 +215,7 @@ namespace PeterDB {
         return SUCCESS;
     }
 
-    RC RelationManager::deleteIndexFromCatalog(int32_t tableID, std::string attrName){
+    RC RelationManager::deleteIndexFromCatalog(int32_t tableID, std::string attrName) {
         RC rc;
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
 
@@ -222,7 +231,7 @@ namespace PeterDB {
         }
         while (indexIterator.getNextRecord(curRID, rawData) != RBFM_EOF) {
             CatalogIndexesHelper index(rawData, indexAttrNames);
-            if (index.attr_name == attrName){
+            if (index.attr_name == attrName) {
                 rc = rbfm.deleteRecord(fhIndexes, catalogIndexesSchema, curRID);
                 if (rc) {
                     return RC(RM_ERROR::ERR_UNDEFINED);
@@ -338,22 +347,24 @@ namespace PeterDB {
 
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
         FileHandle thisFile;
+        std::vector<Attribute> recordDescriptor;
         // table name is file name in this system
         rc = rbfm.openFile(tableName, thisFile);
         if (rc) {
             LOG(ERROR) << "open file err" << "@RelationManager::insertTuple" << std::endl;
             return RC(RM_ERROR::FILE_OPEN_FAIL);
         }
-        std::vector<Attribute> recordDescriptor;
         rc = getAttributes(tableName, recordDescriptor);
-        if (rc) {
-            return RC(RM_ERROR::DESCRIPTOR_GET_FAIL);
-        }
+        if (rc) return RC(RM_ERROR::DESCRIPTOR_GET_FAIL);
         rc = rbfm.insertRecord(thisFile, recordDescriptor, data, rid);
         if (rc) {
             LOG(ERROR) << "insert record err" << "@RelationManager::insertTuple" << std::endl;
             return RC(RM_ERROR::TUPLE_INSERT_FAIL);
         }
+
+        // insert all associated index
+        insertIndex(tableName, data, recordDescriptor, rid);
+
         rc = rbfm.closeFile(thisFile);
         if (rc) {
             LOG(ERROR) << "close file err" << "@RelationManager::insertTuple" << std::endl;
@@ -385,6 +396,11 @@ namespace PeterDB {
         if (rc) {
             return RC(RM_ERROR::DESCRIPTOR_GET_FAIL);
         }
+        uint8_t buffer[PAGE_SIZE];
+        rc = rbfm.readRecord(thisFile, recordDescriptor,rid,buffer);
+        if (rc)return rc;
+        rc = deleteIndex(tableName, buffer, recordDescriptor, const_cast<RID &>(rid));
+        if (rc)return rc;
         rc = rbfm.deleteRecord(thisFile, recordDescriptor, rid);
         if (rc) {
             LOG(ERROR) << "insert record err" << "@RelationManager::deleteTuple" << std::endl;
@@ -426,6 +442,12 @@ namespace PeterDB {
             LOG(ERROR) << "update record err" << "@RelationManager::updateTuple" << std::endl;
             return RC(RM_ERROR::TUPLE_UPDATE_FAIL);
         }
+        uint8_t oldData[PAGE_SIZE];
+        rc = rbfm.readRecord(thisFile, recordDescriptor,rid,oldData);
+        if (rc)return rc;
+        rc = updateIndex(tableName, oldData, data, recordDescriptor, const_cast<RID &>(rid));
+        if (rc)return rc;
+
         rc = rbfm.closeFile(thisFile);
         if (rc) {
             LOG(ERROR) << "close file err" << "@RelationManager::updateTuple" << std::endl;
@@ -677,19 +699,19 @@ namespace PeterDB {
         // Find all indexes associated with this table and corresponding file names
         std::unordered_map<std::string, std::string> indexedAttrAndFileName;
         rc = getIndexes(tableName, indexedAttrAndFileName);
-        if(rc) return rc;
-        if(indexedAttrAndFileName.find(attributeName) == indexedAttrAndFileName.end()) {
+        if (rc) return rc;
+        if (indexedAttrAndFileName.find(attributeName) == indexedAttrAndFileName.end()) {
             return RC(RM_ERROR::INDEX_NOT_EXIST);
         }
         std::string ixFileName = indexedAttrAndFileName[attributeName];
 
         //  Delete index from catalog
         rc = deleteIndexFromCatalog(tableRecord.table_id, attributeName);
-        if(rc) return rc;
+        if (rc) return rc;
 
         // 4. Delete index file
         rc = ix.destroyFile(ixFileName);
-        if(rc) return rc;
+        if (rc) return rc;
 
         return 0;
     }
@@ -702,7 +724,42 @@ namespace PeterDB {
                                   bool lowKeyInclusive,
                                   bool highKeyInclusive,
                                   RM_IndexScanIterator &rm_IndexScanIterator) {
-        return -1;
+        if (isTableNameEmpty(tableName)) {
+            return RC(RM_ERROR::TABLE_NAME_EMPTY);
+        }
+
+        if (!isTableAccessible(tableName)) {
+            return RC(RM_ERROR::TABLE_ACCESS_DENIED);
+        }
+        RC ret = 0;
+        RecordBasedFileManager& rbfm = RecordBasedFileManager::instance();
+        IndexManager& ix = IndexManager::instance();
+
+        std::vector<Attribute> attrs;
+        RC rc = getAttributes(tableName, attrs);
+        if (rc) return rc;
+        // get indexed field pos
+        int32_t attr_pos = 0;
+        for (; attr_pos < attrs.size(); attr_pos++) {
+            if (attrs[attr_pos].name == attributeName)break;
+        }
+        assert(attr_pos < attrs.size());
+
+        std::unordered_map<std::string, std::string> indexedAttrAndFileName;
+        ret = getIndexes(tableName, indexedAttrAndFileName);
+        if(ret) return ret;
+        if(indexedAttrAndFileName.find(attributeName) == indexedAttrAndFileName.end()) return RC(RM_ERROR::INDEX_NOT_EXIST);
+        std::string ixFileName = indexedAttrAndFileName[attributeName];
+
+        IXFileHandle* ixScanFH = new IXFileHandle;
+        ret = ix.openFile(ixFileName, *ixScanFH);
+        if(ret) return ret;
+
+        ixScanFHList.push_back(ixScanFH);
+        ret = rm_IndexScanIterator.open(ixScanFH, attrs[attr_pos], (uint8_t *) lowKey, (uint8_t *) highKey, lowKeyInclusive,
+                                  highKeyInclusive);
+        if (ret)return ret;
+        return SUCCESS;
     }
 
     std::string RelationManager::getIndexFileName(const std::string &tableName, const std::string &attrName) {
@@ -710,7 +767,7 @@ namespace PeterDB {
     }
 
     RC RelationManager::insertIndexToCatalog(const int32_t tableID, const std::string &attrName,
-                                               const std::string &fileName) {
+                                             const std::string &fileName) {
         RC rc;
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
         // open 3 files
@@ -721,17 +778,17 @@ namespace PeterDB {
         // contruct rawdata
         uint8_t data[PAGE_SIZE];
         memset(data, 0, PAGE_SIZE);
-        auto rawData = (RawRecord*)data;
+        auto rawData = (RawRecord *) data;
         RID rid;
         int32_t attrNameLen = attrName.size();
         int32_t fileNameLen = fileName.size();
         rawData->initNullByte(catalogIndexesSchema.size());
         auto dest = rawData->dataSection(catalogIndexesSchema.size());
         memcpy(dest, &tableID, sizeof(int32_t));
-        memcpy((uint8_t*)dest + sizeof(int32_t), &attrNameLen, sizeof(int32_t));
-        memcpy((uint8_t*)dest + 2 * sizeof(int32_t), &attrName, attrNameLen);
-        memcpy((uint8_t*)dest + 2 * sizeof(int32_t) + attrNameLen, &fileNameLen, sizeof(int32_t));
-        memcpy((uint8_t*)dest + 3 * sizeof(int32_t) + attrNameLen, &fileName, fileNameLen);
+        memcpy((uint8_t *) dest + sizeof(int32_t), &attrNameLen, sizeof(int32_t));
+        memcpy((uint8_t *) dest + 2 * sizeof(int32_t), &attrName, attrNameLen);
+        memcpy((uint8_t *) dest + 2 * sizeof(int32_t) + attrNameLen, &fileNameLen, sizeof(int32_t));
+        memcpy((uint8_t *) dest + 3 * sizeof(int32_t) + attrNameLen, &fileName, fileNameLen);
 
         // insert to tables table
         rc = rbfm.insertRecord(fhIndexes, catalogIndexesSchema, rawData, rid);
@@ -746,7 +803,8 @@ namespace PeterDB {
         RC rc;
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
         RBFM_ScanIterator tablesIterator;
-        std::vector<std::string> selectedAttrNames = {CATALOG_TABLES_TABLEID, CATALOG_TABLES_TABLENAME, CATALOG_TABLES_FILENAME};
+        std::vector<std::string> selectedAttrNames = {CATALOG_TABLES_TABLEID, CATALOG_TABLES_TABLENAME,
+                                                      CATALOG_TABLES_FILENAME};
         rc = openCatalog();
         if (rc) {
             return RC(RM_ERROR::CATALOG_OPEN_FAIL);
@@ -760,19 +818,20 @@ namespace PeterDB {
         int16_t recLen;
         uint8_t rawData[PAGE_SIZE];
         uint8_t buffer[PAGE_SIZE];;
-        auto record = (Record*) buffer;
+        auto record = (Record *) buffer;
         bool isRecordExist = false;
         while (tablesIterator.getNextRecord(curRID, rawData) != RBFM_EOF) {
-            record->fromRawRecord((RawRecord*)rawData,tablesIterator.getRecordDescriptor() , tablesIterator.getSelectedAttrIdx(), recLen);
-            if (record->getField<std::string>(1) == tableName){
-                tableRecord.table_id =record->getField<int32_t>(0);
-                tableRecord.table_name=record->getField<std::string>(1);
+            record->fromRawRecord((RawRecord *) rawData, tablesIterator.getRecordDescriptor(),
+                                  tablesIterator.getSelectedAttrIdx(), recLen);
+            if (record->getField<std::string>(1) == tableName) {
+                tableRecord.table_id = record->getField<int32_t>(0);
+                tableRecord.table_name = record->getField<std::string>(1);
                 tableRecord.file_name = record->getField<std::string>(2);
                 isRecordExist = true;
                 break;
             }
         }
-        if(!isRecordExist) {
+        if (!isRecordExist) {
             return RC(RM_ERROR::RECORD_NOT_EXIST);
         }
         return SUCCESS;
@@ -825,27 +884,133 @@ namespace PeterDB {
                                    std::unordered_map<std::string, std::string> &indexedAttrAndFileName) {
         RC rc = 0;
         rc = openCatalog();
-        if(rc) {
+        if (rc) {
             return RC(RM_ERROR::CATALOG_OPEN_FAIL);
         }
-        RecordBasedFileManager& rbfm = RecordBasedFileManager::instance();
+        RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
         CatalogTablesHelper tablesRecord;
         rc = getTableMetaData(tableName, tablesRecord);
         if (rc)return rc;
 
         RBFM_ScanIterator IdxIterator;
-        std::vector<std::string> projectAttrNames = {CATALOG_INDEXES_ATTRNAME,CATALOG_INDEXES_FILENAME};
+        std::vector<std::string> projectAttrNames = {CATALOG_INDEXES_ATTRNAME, CATALOG_INDEXES_FILENAME};
         rc = rbfm.scan(fhIndexes, catalogIndexesSchema, CATALOG_INDEXES_TABLEID,
                        EQ_OP, &tablesRecord.table_id, projectAttrNames, IdxIterator);
         if (rc) { return RC(RM_ERROR::ITERATOR_BEGIN_FAIL); }
 
         RID curRID;
         uint8_t rawData[PAGE_SIZE];
-        while(IdxIterator.getNextRecord(curRID, rawData) == 0) {
+        while (IdxIterator.getNextRecord(curRID, rawData) == 0) {
             CatalogIndexesHelper curIndex(rawData, projectAttrNames);
             indexedAttrAndFileName[curIndex.attr_name] = curIndex.file_name;
         }
 
+        return SUCCESS;
+    }
+
+    RC RelationManager::insertIndex(const std::string &tableName, const void *data,
+                                    const std::vector<Attribute> recordDescriptor, RID &rid) {
+        RC ret;
+        // update all associated index
+        IndexManager &ix = IndexManager::instance();
+        std::unordered_map<std::string, std::string> indexedAttrAndFileName;
+        ret = getIndexes(tableName, indexedAttrAndFileName);
+        if (ret) return ret;
+        auto rawData = (RawRecord *) data;
+        for (int i = 0; i < recordDescriptor.size(); i++) {
+            if (rawData->isNullField(i)) continue;
+            if (indexedAttrAndFileName.find(recordDescriptor[i].name) != indexedAttrAndFileName.end()) {
+                // insert entry into each index
+                // update ixFHMap
+                if (ixFHMap.find(indexedAttrAndFileName[recordDescriptor[i].name]) == ixFHMap.end()) {
+                    IXFileHandle *fh = new IXFileHandle;
+                    ret = ix.openFile(indexedAttrAndFileName[recordDescriptor[i].name], *fh);
+                    if (ret) return ret;
+                    ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]] = fh;
+                }
+                auto key = rawData->getFieldPtr<uint8_t>(recordDescriptor, recordDescriptor[i].name);
+                ret = ix.insertEntry(*ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]], recordDescriptor[i],
+                                     key, rid);
+                if (ret) return ret;
+            }
+        }
+        return SUCCESS;
+    }
+
+    RC RelationManager::deleteIndex(const std::string &tableName, const void *data,
+                                    const std::vector<Attribute> recordDescriptor,  RID &rid) {
+        RC ret;
+        // update all associated index
+        IndexManager &ix = IndexManager::instance();
+        std::unordered_map<std::string, std::string> indexedAttrAndFileName;
+        ret = getIndexes(tableName, indexedAttrAndFileName);
+        if (ret) return ret;
+        auto rawData = (RawRecord *) data;
+        for (int i = 0; i < recordDescriptor.size(); i++) {
+            if (rawData->isNullField(i)) continue;
+            if (indexedAttrAndFileName.find(recordDescriptor[i].name) != indexedAttrAndFileName.end()) {
+                // insert entry into each index
+                // update ixFHMap
+                if (ixFHMap.find(indexedAttrAndFileName[recordDescriptor[i].name]) == ixFHMap.end()) {
+                    IXFileHandle *fh = new IXFileHandle;
+                    ret = ix.openFile(indexedAttrAndFileName[recordDescriptor[i].name], *fh);
+                    if (ret) return ret;
+                    ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]] = fh;
+                }
+                auto key = rawData->getFieldPtr<uint8_t>(recordDescriptor, recordDescriptor[i].name);
+                ret = ix.deleteEntry(*ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]], recordDescriptor[i],
+                                     key, rid);
+                if (ret) return ret;
+            }
+        }
+        return SUCCESS;
+    }
+
+    RC RelationManager::updateIndex(const std::string &tableName, const void *oldData, const void *newData,
+                                    const std::vector<Attribute> recordDescriptor, RID &rid) {
+        RC ret;
+        // delete and re-insert
+        IndexManager &ix = IndexManager::instance();
+        std::unordered_map<std::string, std::string> indexedAttrAndFileName;
+        ret = getIndexes(tableName, indexedAttrAndFileName);
+        if (ret) return ret;
+        auto oldRawData = (RawRecord *) oldData;
+        for (int i = 0; i < recordDescriptor.size(); i++) {
+            if (oldRawData->isNullField(i)) continue;
+            if (indexedAttrAndFileName.find(recordDescriptor[i].name) != indexedAttrAndFileName.end()) {
+                // insert entry into each index
+                // update ixFHMap
+                if (ixFHMap.find(indexedAttrAndFileName[recordDescriptor[i].name]) == ixFHMap.end()) {
+                    IXFileHandle *fh = new IXFileHandle;
+                    ret = ix.openFile(indexedAttrAndFileName[recordDescriptor[i].name], *fh);
+                    if (ret) return ret;
+                    ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]] = fh;
+                }
+                auto key = oldRawData->getFieldPtr<uint8_t>(recordDescriptor, recordDescriptor[i].name);
+                ret = ix.deleteEntry(*ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]], recordDescriptor[i],
+                                     key, rid);
+                if (ret) return ret;
+            }
+        }
+
+        auto newRawData = (RawRecord *) newData;
+        for (int i = 0; i < recordDescriptor.size(); i++) {
+            if (newRawData->isNullField(i)) continue;
+            if (indexedAttrAndFileName.find(recordDescriptor[i].name) != indexedAttrAndFileName.end()) {
+                // insert entry into each index
+                // update ixFHMap
+                if (ixFHMap.find(indexedAttrAndFileName[recordDescriptor[i].name]) == ixFHMap.end()) {
+                    IXFileHandle *fh = new IXFileHandle;
+                    ret = ix.openFile(indexedAttrAndFileName[recordDescriptor[i].name], *fh);
+                    if (ret) return ret;
+                    ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]] = fh;
+                }
+                auto key = newRawData->getFieldPtr<uint8_t>(recordDescriptor, recordDescriptor[i].name);
+                ret = ix.insertEntry(*ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]], recordDescriptor[i],
+                                     key, rid);
+                if (ret) return ret;
+            }
+        }
         return SUCCESS;
     }
 

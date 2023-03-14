@@ -198,6 +198,29 @@ namespace PeterDB {
 
     class BNLJoin : public Iterator {
         // Block nested-loop join operator
+        Iterator* outer;
+        TableScan* inner;
+        Condition cond;
+        uint32_t hashTableMaxSize, remainSize;
+        // if has a pointer points to a linked list with a matched key
+        bool hasPointer;
+        int32_t matchedIntKey;
+        float matchedFloatKey;
+        std::string matchedStrKey;
+        int32_t hashLinkedListPos = INT16_MAX;
+
+        std::vector<Attribute> outerAttrs, innerAttrs;
+        std::vector<Attribute> joinedAttrs;
+        Attribute joinAttr;
+
+        uint8_t innerReadBuffer[PAGE_SIZE];
+        uint8_t outerReadBuffer[PAGE_SIZE];
+
+        // for outer table block load
+        std::unordered_map<int32_t, std::vector<std::vector<uint8_t>>> intHash;
+        std::unordered_map<float, std::vector<std::vector<uint8_t>>> floatHash;
+        std::unordered_map<std::string, std::vector<std::vector<uint8_t>>> strHash;
+
     public:
         BNLJoin(Iterator *leftIn,            // Iterator of input R
                 TableScan *rightIn,           // TableScan Iterator of input S
@@ -210,12 +233,27 @@ namespace PeterDB {
 
         RC getNextTuple(void *data) override;
 
+        RC loadBlock();
+
         // For attribute in std::vector<Attribute>, name it as rel.attr
         RC getAttributes(std::vector<Attribute> &attrs) const override;
     };
 
     class INLJoin : public Iterator {
         // Index nested-loop join operator
+        Iterator* outer;
+        IndexScan* inner;
+        Condition cond;
+
+        std::vector<Attribute> outerAttrs, innerAttrs;
+        std::vector<Attribute> joinedAttrs;
+        Attribute joinAttr;
+
+        uint8_t outerReadBuffer[PAGE_SIZE] = {};
+        uint8_t innerReadBuffer[PAGE_SIZE] = {};
+        uint8_t outerKeyBuffer[PAGE_SIZE] = {};
+        uint8_t innerKeyBuffer[PAGE_SIZE] = {};
+
     public:
         INLJoin(Iterator *leftIn,           // Iterator of input R
                 IndexScan *rightIn,          // IndexScan Iterator of input S

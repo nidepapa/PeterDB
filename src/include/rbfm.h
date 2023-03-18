@@ -8,6 +8,7 @@
 #include <iostream>
 #include <cassert>
 #include <cmath>
+#include <cstring>
 
 namespace PeterDB {
     // Record ID

@@ -148,8 +148,7 @@ namespace PeterDB {
                 char conditionAttrStr[conditionStrLen];
                 memset(conditionAttrStr, 0, conditionStrLen);
                 memcpy(conditionAttrStr, conditionVal, conditionStrLen);
-
-                return compareStr(std::string(recordAttrStr), std::string(conditionAttrStr));
+                return compareStr(std::string(recordAttrStr, attrLen), std::string(conditionAttrStr,conditionStrLen));
         }
     }
 

@@ -230,49 +230,38 @@ namespace PeterDB {
     RC Record::fromRawRecord(RawRecord *rawRecord, const std::vector<Attribute> &recordDescriptor, const std::vector<uint16_t> &selectedAttrIndex, int16_t &recordLen) {
         this->getDirectory()->header.Flag = FLAG_DATA;
         this->getDirectory()->header.AttrNum = recordDescriptor.size();
-        const int nullByteSize = rawRecord->getNullByteSize(recordDescriptor.size());
-        uint8_t *valPos = (uint8_t *) this->getDataSectionStart();
-        // write directory and each attribute raw data
+        const int nullByteSize = rawRecord->getNullByteSize(selectedAttrIndex.size());
         int16_t rawRecordOffset = nullByteSize, recordOffset = 0;
-        // directory move right by 2 byte
-        for (short i = 0; i < this->getDirectory()->header.AttrNum; i++) {
+        for (short i = 0; i < recordDescriptor.size(); i++) {
             auto result = std::find(selectedAttrIndex.begin(), selectedAttrIndex.end(), i);
             // ith field does not exist in the raw data
             if (result == selectedAttrIndex.end()){
-                this->getDirectory()->getEntry(i)->setNull();
+                this->getDirectoryEntry(i)->setNull();
                 continue;
             }
             // ith exist but is null in raw data
             auto rawIdx = result - selectedAttrIndex.begin();
             if (rawRecord->isNullField(rawIdx)) {
-                this->getDirectory()->getEntry(i)->setNull();
+                this->getDirectoryEntry(i)->setNull();
                 continue;
             }
+            this->getDirectoryEntry(i)->setOffset(recordOffset);
             switch (recordDescriptor[i].type) {
                 case TypeInt:
                 case TypeReal:
-                    memcpy(valPos + recordOffset, rawRecord + rawRecordOffset, recordDescriptor[i].length);
-                    rawRecordOffset += recordDescriptor[i].length;
-                    recordOffset += recordDescriptor[i].length;
+                    rawRecordOffset += 4;
+                    recordOffset += 4;
                     // set directory
-                    this->getDirectory()->getEntry(i)->setOffset(recordOffset);
                     break;
                 case TypeVarChar:
-                    StrLenIndicator strLen;
-                    // get varchar length
-                    memcpy(&strLen, rawRecord + rawRecordOffset, sizeof(StrLenIndicator));
-                    assert(strLen <= PAGE_SIZE);
-                    rawRecordOffset += sizeof(StrLenIndicator);
-                    // copy string
-                    memcpy(valPos + recordOffset, rawRecord + rawRecordOffset, strLen);
-                    rawRecordOffset += strLen;
-                    recordOffset += strLen;
-                    // set directory
-                    this->getDirectory()->getEntry(i)->setOffset(recordOffset);
+                    int32_t *strLen = (int32_t*)((uint8_t*)(rawRecord) + rawRecordOffset);
+                    rawRecordOffset +=  sizeof(int32_t) + *strLen;
+                    recordOffset += sizeof(int32_t) + *strLen;
                     break;
             }
         }
         recordLen = this->getDirectorySize() + recordOffset;
+        memcpy(this->getDataSectionStart(), (uint8_t*)(rawRecord) + nullByteSize, recordOffset);
         return SUCCESS;
     }
 
@@ -389,27 +378,6 @@ namespace PeterDB {
         assert(joinRecord->getNullByteSize(joinAttrs.size()) + leftDataSectionSize + rightDataSectionSize == joinSize);
         return 0;
     }
-
-    template<typename  T>
-    T * RawRecord::getFieldPtr(const std::vector<Attribute> &recordDescriptor, const std::string attrName) const{
-
-        auto valPos = (uint8_t*)this->dataSection(recordDescriptor.size());
-        for (int i= 0; i < recordDescriptor.size(); i++){
-            if (this->isNullField(i))continue;
-            if (recordDescriptor[i].name == attrName)return (T*)valPos;
-            switch(recordDescriptor[i].type){
-                case TypeInt:
-                case TypeReal:
-                    valPos += sizeof(int32_t);
-                case TypeVarChar:
-                    int32_t strLen = 0;
-                    memcpy(&strLen, valPos, sizeof(int32_t));
-                    valPos += strLen + sizeof(int32_t);
-            }
-        }
-        return (T*)valPos;
-    }
-
 
 }
 

@@ -76,6 +76,7 @@ namespace PeterDB {
     }
 
     RC Project::getAttributes(std::vector<Attribute> &attrs) const {
+        attrs.clear();
         for (auto idx:this->projectAttrIdx){
             attrs.push_back(this->attrs[idx]);
         }
@@ -107,6 +108,7 @@ namespace PeterDB {
                 case TypeReal:
                     memcpy(valPos, record->getFieldPtr<int32_t>(attrIdx),sizeof(int32_t));
                     valPos += sizeof(int32_t);
+                    break;
                 case TypeVarChar:
                     auto str = record->getField<std::string>(attrIdx);
                     int32_t strLen = str.size();
@@ -114,6 +116,7 @@ namespace PeterDB {
                     valPos += sizeof(int32_t);
                     memcpy(valPos, &str,strLen);
                     valPos += strLen;
+                    break;
             }
         }
         return SUCCESS;
@@ -135,7 +138,13 @@ namespace PeterDB {
 
         for (const auto& attr:outerAttrs){
             if (attr.name == cond.lhsAttr){
-                this->joinAttr = attr;
+                this->outerJoinAttr = attr;
+                break;
+            }
+        }
+        for (const auto& attr:innerAttrs){
+            if (attr.name == cond.rhsAttr){
+                this->innerJoinAttr = attr;
                 break;
             }
         }
@@ -149,7 +158,7 @@ namespace PeterDB {
         // already matched a key, then join all the outer record
         if (hasPointer){
             auto innerRecord = (RawRecord*)innerReadBuffer;
-            switch (joinAttr.type) {
+            switch (outerJoinAttr.type) {
                 case TypeInt:
                     if(hashLinkedListPos < intHash[matchedIntKey].size()) {
                         auto outerRecord = (RawRecord*)intHash[matchedIntKey][hashLinkedListPos].data();
@@ -195,9 +204,9 @@ namespace PeterDB {
             }
             auto innerRecord = (RawRecord*)innerReadBuffer;
             // Probe hash table in memory
-            switch (joinAttr.type) {
+            switch (outerJoinAttr.type) {
                 case TypeInt:
-                    intKey = innerRecord->getField<int32_t>(innerAttrs, joinAttr.name);
+                    intKey = innerRecord->getField<int32_t>(innerAttrs, innerJoinAttr.name);
                     if(intHash.find(intKey) != intHash.end()) {
                         auto outerRecord = (RawRecord*)intHash[intKey][0].data();
                         outerRecord->join(outerAttrs, innerRecord, innerAttrs, (RawRecord*)data, joinedAttrs);
@@ -208,7 +217,7 @@ namespace PeterDB {
                     }
                     break;
                 case TypeReal:
-                    floatKey = innerRecord->getField<float>(innerAttrs, joinAttr.name);
+                    floatKey = innerRecord->getField<float>(innerAttrs, innerJoinAttr.name);
                     if(floatHash.find(floatKey) != floatHash.end()) {
                         auto outerRecord = (RawRecord*)floatHash[floatKey][0].data();
                         outerRecord->join(outerAttrs, innerRecord, innerAttrs, (RawRecord*)data, joinedAttrs);
@@ -219,7 +228,7 @@ namespace PeterDB {
                     }
                     break;
                 case TypeVarChar:
-                    strKey =  innerRecord->getField<std::string>(innerAttrs, joinAttr.name);
+                    strKey =  innerRecord->getField<std::string>(innerAttrs, innerJoinAttr.name);
                     if(strHash.find(strKey) != strHash.end()) {
                         auto outerRecord = (RawRecord*)strHash[strKey][0].data();
                         outerRecord->join(outerAttrs, innerRecord, innerAttrs, (RawRecord*)data, joinedAttrs);
@@ -257,15 +266,15 @@ namespace PeterDB {
             auto outRawRecord = (RawRecord*)outerReadBuffer;
             int32_t dataLen = 0;
             outRawRecord->size(outerAttrs, &dataLen);
-            switch (joinAttr.type){
+            switch (outerJoinAttr.type){
                 case TypeInt:
-                    intKey = outRawRecord->getField<int32_t>(outerAttrs, joinAttr.name);
+                    intKey = outRawRecord->getField<int32_t>(outerAttrs, outerJoinAttr.name);
                     intHash[intKey].push_back(std::vector<uint8_t>(outerReadBuffer, outerReadBuffer + dataLen));
                 case TypeReal:
-                    floatKey = outRawRecord->getField<float>(outerAttrs, joinAttr.name);
+                    floatKey = outRawRecord->getField<float>(outerAttrs, outerJoinAttr.name);
                     floatHash[floatKey].push_back(std::vector<uint8_t>(outerReadBuffer, outerReadBuffer + dataLen));
                 case TypeVarChar:
-                    strKey = outRawRecord->getField<std::string>(outerAttrs, joinAttr.name);
+                    strKey = outRawRecord->getField<std::string>(outerAttrs, outerJoinAttr.name);
                     strHash[strKey].push_back(std::vector<uint8_t>(outerReadBuffer, outerReadBuffer + dataLen));
             }
             remainSize -= dataLen;
@@ -290,7 +299,13 @@ namespace PeterDB {
 
         for(auto& attr: this->outerAttrs) {
             if(attr.name == cond.lhsAttr) {
-                this->joinAttr = attr;
+                this->outerJoinAttr = attr;
+                break;
+            }
+        }
+        for(auto& attr: this->innerAttrs) {
+            if(attr.name == cond.rhsAttr) {
+                this->innerJoinAttr = attr;
                 break;
             }
         }
@@ -298,7 +313,7 @@ namespace PeterDB {
         outerIterStatus = outer->getNextTuple(outerReadBuffer);
         if(outerIterStatus != QE_EOF) {
             auto outerRecord = ((RawRecord*)outerReadBuffer);
-            outerKey = outerRecord->getFieldPtr<uint8_t>(outerAttrs, joinAttr.name);
+            outerKey = (uint8_t*)(outerRecord->getFieldPtr(outerAttrs, outerJoinAttr.name));
             inner->setIterator(outerKey, outerKey, true, true);
         }
 
@@ -309,11 +324,11 @@ namespace PeterDB {
     RC INLJoin::getNextTuple(void *data) {
         while(outerIterStatus != QE_EOF) {
             auto outerRecord = ((RawRecord*)outerReadBuffer);
-            outerKey = outerRecord->getFieldPtr<uint8_t>(outerAttrs, joinAttr.name);
+            outerKey = (uint8_t*)(outerRecord->getFieldPtr(outerAttrs, outerJoinAttr.name));
             while(inner->getNextTuple(innerReadBuffer) == SUCCESS) {
                 auto innerRecord = ((RawRecord*)innerReadBuffer);
-                innerKey = innerRecord->getFieldPtr<uint8_t>(innerAttrs, joinAttr.name);
-                if(QEHelper::isSameKey(outerKey, innerKey, joinAttr.type)) {
+                innerKey = (uint8_t*)(innerRecord->getFieldPtr(innerAttrs, innerJoinAttr.name));
+                if(QEHelper::isSameKey(outerKey, innerKey, outerJoinAttr.type)) {
                     outerRecord->join(outerAttrs, innerRecord, innerAttrs, (RawRecord*)data, joinedAttrs);
                     return 0;
                 }
@@ -322,7 +337,7 @@ namespace PeterDB {
             outerIterStatus = outer->getNextTuple(outerReadBuffer);
             if(outerIterStatus != QE_EOF) {
                 auto outerRecord = ((RawRecord*)outerReadBuffer);
-                outerKey = outerRecord->getFieldPtr<uint8_t>(outerAttrs, joinAttr.name);
+                outerKey = (uint8_t*)(outerRecord->getFieldPtr(outerAttrs, outerJoinAttr.name));
                 inner->setIterator(outerKey, outerKey, true, true);
             }
         }
@@ -433,7 +448,161 @@ namespace PeterDB {
     }
 
     Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, const Attribute &groupAttr, AggregateOp op) {
-        // todo group
+        this->input = input;
+        this->aggAttr = aggAttr;
+        this->op = op;
+        this->groupAttr = groupAttr;
+        this->isGroup = true;
+
+        std::vector<Attribute> attrs;
+        input->getAttributes(attrs);
+
+        int32_t intAggKey, intGroupKey;
+        float floatAggKey, floatGroupKey;
+        std::string strGroupKey;
+
+        auto rawRecord = (RawRecord*)readBuffer;
+        while(input->getNextTuple(readBuffer) == 0) {
+            switch (groupAttr.type) {
+                case TypeInt:
+                    intGroupKey = rawRecord->getField<int32_t>(inputAttrs, groupAttr.name);
+                    if(intHash.find(intGroupKey) == intHash.end()) {
+                        intHash[intGroupKey].first = 0;
+                        switch (op) {
+                            case MAX: intHash[intGroupKey].second = LONG_MIN; break;
+                            case MIN: intHash[intGroupKey].second = LONG_MAX; break;
+                            case SUM:
+                            case AVG:
+                            case COUNT:
+                                intHash[intGroupKey].second = 0;
+                                break;
+                        }
+                    }
+                    intHash[intGroupKey].first++;
+                    break;
+                case TypeReal:
+                    floatGroupKey = rawRecord->getField<float>(inputAttrs, groupAttr.name);
+                    if(floatHash.find(floatGroupKey) == floatHash.end()) {
+                        floatHash[floatGroupKey].first = 0;
+                        switch (op) {
+                            case MAX: floatHash[floatGroupKey].second = LONG_MIN; break;
+                            case MIN: floatHash[floatGroupKey].second = LONG_MAX; break;
+                            case SUM:
+                            case AVG:
+                            case COUNT:
+                                floatHash[floatGroupKey].second = 0;
+                                break;
+                        }
+                    }
+                    floatHash[floatGroupKey].first++;
+                    break;
+                case TypeVarChar:
+                    strGroupKey = rawRecord->getField<std::string>(inputAttrs, groupAttr.name);
+                    if(strHash.find(strGroupKey) == strHash.end()) {
+                        strHash[strGroupKey].first = 0;
+                        switch (op) {
+                            case MAX: strHash[strGroupKey].second = LONG_MIN; break;
+                            case MIN: strHash[strGroupKey].second = LONG_MAX; break;
+                            case SUM:
+                            case AVG:
+                            case COUNT:
+                                strHash[strGroupKey].second = 0;
+                                break;
+                        }
+                    }
+                    strHash[strGroupKey].first++;
+                    break;
+            }
+            switch (op) {
+                case MAX:
+                    if(aggAttr.type == TypeInt) {
+                        intAggKey = rawRecord->getField<int32_t>(inputAttrs, aggAttr.name);
+                        intHash[intGroupKey].second = std::max(intHash[intGroupKey].second, (float)intAggKey);
+                    }
+                    else if(aggAttr.type == TypeReal) {
+                        floatAggKey = rawRecord->getField<float>(inputAttrs, aggAttr.name);
+                        floatHash[floatGroupKey].second = std::max(floatHash[floatGroupKey].second, floatAggKey);
+                    }
+                    break;
+                case MIN:
+                    if(aggAttr.type == TypeInt) {
+                        intAggKey = rawRecord->getField<int32_t>(inputAttrs, aggAttr.name);
+                        intHash[intGroupKey].second = std::min(intHash[intGroupKey].second, (float)intAggKey);
+                    }
+                    else if(aggAttr.type == TypeReal) {
+                        floatAggKey = rawRecord->getField<float>(inputAttrs, aggAttr.name);
+                        floatHash[floatGroupKey].second = std::min(floatHash[floatGroupKey].second, floatAggKey);
+                    }
+                    break;
+                case SUM:
+                case AVG:
+                    if(aggAttr.type == TypeInt) {
+                        intAggKey = rawRecord->getField<int32_t>(inputAttrs, aggAttr.name);
+                        intHash[intGroupKey].second += intAggKey;
+                    }
+                    else if(aggAttr.type == TypeReal) {
+                        floatAggKey = rawRecord->getField<float>(inputAttrs, aggAttr.name);
+                        floatHash[floatGroupKey].second += floatAggKey;
+                    }
+                    break;
+                case COUNT:
+                    break;
+            }
+        }
+
+        switch (groupAttr.type) {
+            case TypeInt:
+                for(auto& p: intHash) {
+                    switch (op) {
+                        case MAX:
+                        case MIN:
+                        case SUM:
+                            intResult.push_back({p.first, p.second.second});
+                            break;
+                        case COUNT:
+                            intResult.push_back({p.first, p.second.first});
+                            break;
+                        case AVG:
+                            intResult.push_back({p.first, p.second.second / p.second.first});
+                            break;
+                    }
+                }
+                break;
+            case TypeReal:
+                for(auto& p: floatHash) {
+                    switch (op) {
+                        case MAX:
+                        case MIN:
+                        case SUM:
+                            floatResult.push_back({p.first, p.second.second});
+                            break;
+                        case COUNT:
+                            floatResult.push_back({p.first, p.second.first});
+                            break;
+                        case AVG:
+                            floatResult.push_back({p.first, p.second.second / p.second.first});
+                            break;
+                    }
+                }
+                break;
+            case TypeVarChar:
+                for(auto& p: strHash) {
+                    switch (op) {
+                        case MAX:
+                        case MIN:
+                        case SUM:
+                            strResult.push_back({p.first, p.second.second});
+                            break;
+                        case COUNT:
+                            strResult.push_back({p.first, p.second.first});
+                            break;
+                        case AVG:
+                            strResult.push_back({p.first, p.second.second / p.second.first});
+                            break;
+                    }
+                }
+                break;
+        }
     }
 
     Aggregate::~Aggregate() = default;
@@ -442,7 +611,45 @@ namespace PeterDB {
     RC Aggregate::getNextTuple(void *data) {
         auto output = (RawRecord*)data;
         if(isGroup) {
-            // todo group
+            int32_t pos = 0;
+            switch (groupAttr.type) {
+                case TypeInt:
+                    if (result_pos >= intResult.size()) {
+                        return QE_EOF;
+                    }
+
+                    output->initNullByte(2);
+                    pos = output->getNullByteSize(2);
+                    *(int32_t *) ((uint8_t *) data + pos) = intResult[result_pos].first;
+                    pos += sizeof(int32_t);
+                    *(float *) ((uint8_t *) data + pos) = intResult[result_pos].second;
+                    break;
+                case TypeReal:
+                    if (result_pos >= floatResult.size()) {
+                        return QE_EOF;
+                    }
+
+                    output->initNullByte(2);
+                    pos = output->getNullByteSize(2);
+                    *(float *) ((uint8_t *) data + pos) = floatResult[result_pos].first;
+                    pos += sizeof(float);
+                    *(float *) ((uint8_t *) data + pos) = floatResult[result_pos].second;
+                    break;
+                case TypeVarChar:
+                    if (result_pos >= floatResult.size()) {
+                        return QE_EOF;
+                    }
+
+                    output->initNullByte(2);
+                    pos = output->getNullByteSize(2);
+                    *(int32_t *) ((uint8_t *) data + pos) = strResult[result_pos].first.size();
+                    pos += sizeof(int32_t);
+                    memcpy((uint8_t *) data + pos, strResult[result_pos].first.c_str(),
+                           strResult[result_pos].first.size());
+                    pos += strResult[result_pos].first.size();
+                    *(float *) ((uint8_t *) data + pos) = strResult[result_pos].second;
+                    break;
+            }
         }
         else {
             if(result_pos >= result.size()) {
@@ -456,6 +663,35 @@ namespace PeterDB {
     }
 
     RC Aggregate::getAttributes(std::vector<Attribute> &attrs) const {
-        return -1;
+        std::string opName;
+        switch (this->op) {
+            case MIN:
+                opName = "MIN";
+                break;
+            case MAX:
+                opName = "MAX";
+                break;
+            case COUNT:
+                opName = "COUNT";
+                break;
+            case SUM:
+                opName = "SUM";
+                break;
+            case AVG:
+                opName = "AVG";
+                break;
+        }
+
+        Attribute attr;
+        attr.name = opName + "(" + aggAttr.name + ")";
+        attr.type = TypeReal;
+        attr.length = sizeof(float);
+
+        attrs.clear();
+        if (isGroup) {
+            attrs.push_back(groupAttr);
+        }
+        attrs.push_back(attr);
+        return SUCCESS;
     }
 } // namespace PeterDB

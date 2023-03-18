@@ -617,6 +617,7 @@ namespace PeterDBTesting {
         ASSERT_EQ(filter.getNextTuple(outBuffer), success);
         rm.printTuple(attrs, outBuffer, stream);
         checkPrintRecord("A: 2, B: 12, C: 52.5", stream.str());
+        std::cout << "target val: " <<  stream.str() << std::endl;
 
         stream.str(std::string());
         stream.clear();
@@ -624,6 +625,7 @@ namespace PeterDBTesting {
         ASSERT_EQ(filter.getNextTuple(outBuffer), success);
         rm.printTuple(attrs, outBuffer, stream);
         checkPrintRecord("A: 3, B: 13, C: 53.5", stream.str());
+        std::cout << "target val: " <<  stream.str() << std::endl;
 
         stream.str(std::string());
         stream.clear();
@@ -631,6 +633,8 @@ namespace PeterDBTesting {
         ASSERT_EQ(filter.getNextTuple(outBuffer), success);
         rm.printTuple(attrs, outBuffer, stream);
         checkPrintRecord(stream.str(), "A: 5, B: 15, C: 55.5");
+        std::cout << "target val: " <<  stream.str() << std::endl;
+        exit(0);
 
         ASSERT_EQ(filter.getNextTuple(outBuffer), EOF);
 

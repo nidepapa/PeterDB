@@ -200,14 +200,32 @@ namespace PeterDB {
             return (uint8_t*)this + this->getNullByteSize(AttrNum);
         }
 
-        template<typename T>
-        T * getFieldPtr(const std::vector<Attribute> &recordDescriptor,  std::string attrName) const;
+        void* getFieldPtr(const std::vector<Attribute> &recordDescriptor,  std::string attrName) const{
+            int offset = 0;
+            // Increment by null byte size
+            offset += getNullByteSize(recordDescriptor.size());
+            //auto valPos =(uint8_t *)(this->dataSection(recordDescriptor.size()));
+            for (int i= 0; i < recordDescriptor.size(); i++){
+                if (this->isNullField(i))continue;
+                if (recordDescriptor[i].name == attrName)break;
+                switch(recordDescriptor[i].type){
+                    case TypeInt:
+                    case TypeReal:
+                        offset += sizeof(int32_t);
+                        break;
+                    case TypeVarChar:
+                        const int32_t strLen = *(int32_t*)((const uint8_t*)(this) + offset);
+                        offset += sizeof(int32_t) + strLen;
+                        break;
+                }
+            }
+            return (uint8_t*)(this) + offset;
+        }
 
         template<typename T>
         T getField(const std::vector<Attribute> &recordDescriptor,std::string attrName) const{
-            return *getFieldPtr<T>(recordDescriptor, attrName);
+            return *(T*)(getFieldPtr(recordDescriptor, attrName));
         }
-
         RC fromRecord(Record *record, const std::vector<Attribute> &recordDescriptor,const std::vector<uint16_t> &selectedAttrIndex, int16_t &recordLen);
         RC size(const std::vector<Attribute>& attributes, int *size) const;
         RC join(const std::vector<Attribute>& attrs, const RawRecord* rightRecord, const std::vector<Attribute>& rightAttrs,
@@ -216,7 +234,7 @@ namespace PeterDB {
 
     template<>
     inline std::string RawRecord::getField(const std::vector<Attribute> &recordDescriptor, std::string attrName) const {
-        StrLenIndicator *size = this->getFieldPtr<StrLenIndicator>(recordDescriptor, attrName);
+        StrLenIndicator *size = (StrLenIndicator*)(this->getFieldPtr(recordDescriptor, attrName));
         char *data = (char *) (size + 1);
         return std::string(data, *size);
     }

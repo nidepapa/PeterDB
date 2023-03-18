@@ -167,7 +167,7 @@ namespace PeterDB {
         RC insertMetaDataToCatalog(const std::string &tableName, const std::vector<Attribute> schema);
         RC getTableMetaData(const std::string& tableName, CatalogTablesHelper& tableRecord);
         RC deleteMetaDataFromCatalog(int32_t tableID);
-        RC deleteIndexFromCatalog(int32_t tableID, std::string attrName);
+        RC deleteIndexFromCatalog(int32_t tableID, std::string attrName, bool all);
 
         std::string getIndexFileName(const std::string& tableName, const std::string& attrName);
         RC getIndexes(const std::string& tableName, std::unordered_map<std::string, std::string>& indexedAttrAndFileName);

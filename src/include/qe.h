@@ -211,7 +211,8 @@ namespace PeterDB {
 
         std::vector<Attribute> outerAttrs, innerAttrs;
         std::vector<Attribute> joinedAttrs;
-        Attribute joinAttr;
+        Attribute outerJoinAttr;
+        Attribute innerJoinAttr;
 
         uint8_t innerReadBuffer[PAGE_SIZE];
         uint8_t outerReadBuffer[PAGE_SIZE];
@@ -248,7 +249,8 @@ namespace PeterDB {
 
         std::vector<Attribute> outerAttrs, innerAttrs;
         std::vector<Attribute> joinedAttrs;
-        Attribute joinAttr;
+        Attribute outerJoinAttr;
+        Attribute innerJoinAttr;
 
         uint8_t outerReadBuffer[PAGE_SIZE];
         uint8_t innerReadBuffer[PAGE_SIZE];
@@ -301,6 +303,13 @@ namespace PeterDB {
 
         std::vector<float> result;
         int32_t result_pos;
+
+        std::unordered_map<int32_t, std::pair<int32_t, float>> intHash;
+        std::vector<std::pair<int32_t, float>> intResult;
+        std::unordered_map<float, std::pair<int32_t, float>> floatHash;
+        std::vector<std::pair<float, float>> floatResult;
+        std::unordered_map<std::string, std::pair<int32_t, float>> strHash;
+        std::vector<std::pair<std::string, float>> strResult;
 
     public:
         // Mandatory

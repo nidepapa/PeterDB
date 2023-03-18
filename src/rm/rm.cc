@@ -215,7 +215,7 @@ namespace PeterDB {
         return SUCCESS;
     }
 
-    RC RelationManager::deleteIndexFromCatalog(int32_t tableID, std::string attrName) {
+    RC RelationManager::deleteIndexFromCatalog(int32_t tableID, std::string attrName, bool all) {
         RC rc;
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
 
@@ -223,7 +223,7 @@ namespace PeterDB {
         uint8_t rawData[PAGE_SIZE];
         // scan index table
         RBFM_ScanIterator indexIterator;
-        std::vector<std::string> indexAttrNames = {CATALOG_INDEXES_ATTRNAME};
+        std::vector<std::string> indexAttrNames = {CATALOG_INDEXES_TABLEID, CATALOG_INDEXES_ATTRNAME, CATALOG_INDEXES_FILENAME};
         rc = rbfm.scan(fhIndexes, catalogIndexesSchema, CATALOG_INDEXES_TABLEID,
                        EQ_OP, &tableID, indexAttrNames, indexIterator);
         if (rc) {
@@ -231,10 +231,19 @@ namespace PeterDB {
         }
         while (indexIterator.getNextRecord(curRID, rawData) != RBFM_EOF) {
             CatalogIndexesHelper index(rawData, indexAttrNames);
-            if (index.attr_name == attrName) {
+            if (all){
                 rc = rbfm.deleteRecord(fhIndexes, catalogIndexesSchema, curRID);
                 if (rc) {
                     return RC(RM_ERROR::ERR_UNDEFINED);
+                }
+                rbfm.destroyFile(index.file_name);
+            }else{
+                if (index.attr_name == attrName) {
+                    rc = rbfm.deleteRecord(fhIndexes, catalogIndexesSchema, curRID);
+                    if (rc) {
+                        return RC(RM_ERROR::ERR_UNDEFINED);
+                    }
+                    rbfm.destroyFile(index.file_name);
                 }
             }
 
@@ -294,6 +303,8 @@ namespace PeterDB {
             LOG(ERROR) << "delete metadata from catalog err" << "@RelationManager::deleteTable" << std::endl;
             return RC(RM_ERROR::ERR_UNDEFINED);
         }
+        // delete index
+        deleteIndexFromCatalog(tableID,"", true);
         return SUCCESS;
     }
 
@@ -706,7 +717,7 @@ namespace PeterDB {
         std::string ixFileName = indexedAttrAndFileName[attributeName];
 
         //  Delete index from catalog
-        rc = deleteIndexFromCatalog(tableRecord.table_id, attributeName);
+        rc = deleteIndexFromCatalog(tableRecord.table_id, attributeName,false);
         if (rc) return rc;
 
         // 4. Delete index file
@@ -786,9 +797,9 @@ namespace PeterDB {
         auto dest = rawData->dataSection(catalogIndexesSchema.size());
         memcpy(dest, &tableID, sizeof(int32_t));
         memcpy((uint8_t *) dest + sizeof(int32_t), &attrNameLen, sizeof(int32_t));
-        memcpy((uint8_t *) dest + 2 * sizeof(int32_t), &attrName, attrNameLen);
+        memcpy((uint8_t *) dest + 2 * sizeof(int32_t), attrName.c_str(), attrNameLen);
         memcpy((uint8_t *) dest + 2 * sizeof(int32_t) + attrNameLen, &fileNameLen, sizeof(int32_t));
-        memcpy((uint8_t *) dest + 3 * sizeof(int32_t) + attrNameLen, &fileName, fileNameLen);
+        memcpy((uint8_t *) dest + 3 * sizeof(int32_t) + attrNameLen, fileName.c_str(), fileNameLen);
 
         // insert to tables table
         rc = rbfm.insertRecord(fhIndexes, catalogIndexesSchema, rawData, rid);
@@ -809,8 +820,10 @@ namespace PeterDB {
         if (rc) {
             return RC(RM_ERROR::CATALOG_OPEN_FAIL);
         }
+        uint8_t scanVal[tableName.size() + 4];
+        RelationManager::scanIteratorValue(tableName,scanVal);
         rc = rbfm.scan(fhTables, catalogTablesSchema, CATALOG_TABLES_TABLENAME,
-                       EQ_OP, &tableName, selectedAttrNames, tablesIterator);
+                       EQ_OP, &scanVal, selectedAttrNames, tablesIterator);
         if (rc) {
             return RC(RM_ERROR::ERR_UNDEFINED);
         }
@@ -928,7 +941,7 @@ namespace PeterDB {
                     if (ret) return ret;
                     ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]] = fh;
                 }
-                auto key = rawData->getFieldPtr<uint8_t>(recordDescriptor, recordDescriptor[i].name);
+                uint8_t *key = (uint8_t *)(rawData->getFieldPtr(recordDescriptor, recordDescriptor[i].name));
                 ret = ix.insertEntry(*ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]], recordDescriptor[i],
                                      key, rid);
                 if (ret) return ret;
@@ -957,7 +970,7 @@ namespace PeterDB {
                     if (ret) return ret;
                     ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]] = fh;
                 }
-                auto key = rawData->getFieldPtr<uint8_t>(recordDescriptor, recordDescriptor[i].name);
+                uint8_t *key = (uint8_t*)(rawData->getFieldPtr(recordDescriptor, recordDescriptor[i].name));
                 ret = ix.deleteEntry(*ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]], recordDescriptor[i],
                                      key, rid);
                 if (ret) return ret;
@@ -986,7 +999,7 @@ namespace PeterDB {
                     if (ret) return ret;
                     ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]] = fh;
                 }
-                auto key = oldRawData->getFieldPtr<uint8_t>(recordDescriptor, recordDescriptor[i].name);
+                uint8_t *key = (uint8_t*)(oldRawData->getFieldPtr(recordDescriptor, recordDescriptor[i].name));
                 ret = ix.deleteEntry(*ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]], recordDescriptor[i],
                                      key, rid);
                 if (ret) return ret;
@@ -1005,7 +1018,7 @@ namespace PeterDB {
                     if (ret) return ret;
                     ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]] = fh;
                 }
-                auto key = newRawData->getFieldPtr<uint8_t>(recordDescriptor, recordDescriptor[i].name);
+                uint8_t *key = (uint8_t *)(newRawData->getFieldPtr(recordDescriptor, recordDescriptor[i].name));
                 ret = ix.insertEntry(*ixFHMap[indexedAttrAndFileName[recordDescriptor[i].name]], recordDescriptor[i],
                                      key, rid);
                 if (ret) return ret;

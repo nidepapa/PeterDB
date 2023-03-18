@@ -21,6 +21,9 @@ namespace PeterDB {
     RecordBasedFileManager &RecordBasedFileManager::operator=(const RecordBasedFileManager &) = default;
 
     RC RecordBasedFileManager::createFile(const std::string &fileName) {
+        if (PagedFileManager::instance().isFileExists(fileName)){
+            PagedFileManager::instance().destroyFile(fileName);
+        }
         return PagedFileManager::instance().createFile(fileName);
     }
 

@@ -8,6 +8,7 @@
 #include <cstring>
 #include <glog/logging.h>
 
+
 namespace PeterDB {
     RecordHelper::RecordHelper() = default;
 
